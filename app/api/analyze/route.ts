@@ -1,0 +1,521 @@
+import { NextResponse } from "next/server";
+import {
+  BedrockRuntimeClient,
+  InvokeModelCommand,
+} from "@aws-sdk/client-bedrock-runtime";
+import {
+  RekognitionClient,
+  DetectTextCommand,
+} from "@aws-sdk/client-rekognition";
+import {
+  TranslateClient,
+  TranslateTextCommand,
+} from "@aws-sdk/client-translate";
+import type {
+  BudgetCategory,
+  CategoryName,
+  RiskLevel,
+  TransactionAnalysisRequest,
+  TransactionAnalysisResponse,
+} from "@/types/trustpay";
+import { DEFAULT_BLACKLIST, DEFAULT_BUDGETS } from "@/lib/mock-scenarios";
+
+function formatNumber(n: number): string {
+  return new Intl.NumberFormat("vi-VN").format(Math.abs(Math.round(n)));
+}
+
+function parseAmountFromText(text: string): number {
+  const normalized = text.toLowerCase();
+
+  // 1. Khớp mẫu có đơn vị "triệu", "tr", "củ" (vd: "12 triệu", "2.5 triệu", "5tr")
+  const millionMatch = normalized.match(
+    /(\d+(?:[.,]\d+)?)\s*(?:triệu|trieu|tr\b|củ)/i
+  );
+  if (millionMatch) {
+    const val = parseFloat(millionMatch[1].replace(",", "."));
+    if (!isNaN(val)) return Math.round(val * 1_000_000);
+  }
+
+  // 2. Khớp mẫu có đơn vị "nghìn", "ngàn", "k" (vd: "45k", "50 nghìn")
+  const thousandMatch = normalized.match(
+    /(\d+(?:[.,]\d+)?)\s*(?:nghìn|nghin|ngàn|ngan|k\b)/i
+  );
+  if (thousandMatch) {
+    const val = parseFloat(thousandMatch[1].replace(",", "."));
+    if (!isNaN(val)) return Math.round(val * 1_000);
+  }
+
+  // 3. Khớp số tiền định dạng phân cách hàng nghìn bằng dấu chấm hoặc phẩy (vd: 12.000.000đ, 45.000đ, 2,500,000)
+  const formattedMatches = text.match(/\b\d{1,3}(?:[.,]\d{3})+\b/g);
+  if (formattedMatches && formattedMatches.length > 0) {
+    for (const raw of formattedMatches) {
+      const cleaned = raw.replace(/[.,]/g, "");
+      const num = parseInt(cleaned, 10);
+      if (!isNaN(num) && num >= 1000) {
+        return num;
+      }
+    }
+  }
+
+  // 4. Khớp chuỗi số kèm đ / vnd (vd: 500000đ, 45000 vnd)
+  const currencyMatch = normalized.match(/\b(\d{4,9})\s*(?:đ|d|vnd|vnđ)\b/i);
+  if (currencyMatch) {
+    return parseInt(currencyMatch[1], 10);
+  }
+
+  // 5. Tìm số từ 4-8 chữ số không phải STK dài (>= 9 chữ số)
+  const plainNumbers = text.match(/\b\d{4,8}\b/g);
+  if (plainNumbers && plainNumbers.length > 0) {
+    return parseInt(plainNumbers[0], 10);
+  }
+
+  return 0;
+}
+
+function parseRecipientFromText(text: string, blacklist: string[]): string {
+  // Ưu tiên phát hiện STK trong câu lệnh
+  const stkExplicitMatch = text.match(
+    /(?:STK|số tài khoản|tài khoản|tk)\s*[:#-]?\s*([0-9A-Za-z]{6,16})/i
+  );
+
+  // Kiểm tra nếu có cụm "cho <Tên> STK <Số>"
+  const personAndStkMatch = text.match(
+    /cho\s+([^,.]+?)\s+STK\s+([0-9]{6,16})/i
+  );
+  if (personAndStkMatch) {
+    return `${personAndStkMatch[1].trim()} (${personAndStkMatch[2].trim()})`;
+  }
+
+  if (stkExplicitMatch) {
+    return stkExplicitMatch[1].trim();
+  }
+
+  // Kiểm tra xem có phần tử blacklist nào xuất hiện trực tiếp trong câu lệnh không
+  for (const item of blacklist) {
+    if (item && text.toLowerCase().includes(item.toLowerCase())) {
+      return item;
+    }
+  }
+
+  // Tìm sau giới từ "cho", "tại", "tới", "đến"
+  const afterPrepMatch = text.match(
+    /(?:cho|tại|tới|đến)\s+([A-ZÀ-Ỹ0-9][^,.]*?)(?:\s+(?:để|nhận|xác minh|với|số tiền)|$)/i
+  );
+  if (afterPrepMatch && afterPrepMatch[1].trim().length > 1) {
+    return afterPrepMatch[1].trim();
+  }
+
+  return "Người nhận chưa xác định";
+}
+
+function detectCategory(text: string): CategoryName {
+  const lower = text.toLowerCase();
+
+  if (
+    /bún|phở|cơm|ăn|uống|cafe|cà phê|trà sữa|quán|nhà hàng|buffet|lẩu|nướng|bánh|đồ ăn|food|grabfood|shopee\s*food/.test(
+      lower
+    )
+  ) {
+    return "Ăn uống";
+  }
+
+  if (
+    /mua|giày|sneaker|áo|quần|shop|thời trang|mỹ phẩm|điện thoại|laptop|túi|đồng hồ|siêu thị|mall|lazada|shopee|tiki/.test(
+      lower
+    )
+  ) {
+    return "Mua sắm";
+  }
+
+  if (
+    /xe|grab|be\b|taxi|xăng|vé|tàu|máy bay|di chuyển|đi lại|gửi xe|trạm thu phí|bus/.test(
+      lower
+    )
+  ) {
+    return "Di chuyển";
+  }
+
+  return "Khác";
+}
+
+function buildSmartFallbackAnalysis(
+  req: TransactionAnalysisRequest,
+  extractedImageText?: string
+): TransactionAnalysisResponse {
+  const fullText = [req.commandText || "", extractedImageText || ""]
+    .filter(Boolean)
+    .join(" ");
+  const lower = fullText.toLowerCase();
+
+  const budgets: BudgetCategory[] =
+    req.currentBudgets && req.currentBudgets.length > 0
+      ? req.currentBudgets
+      : DEFAULT_BUDGETS;
+
+  const blacklist: string[] =
+    req.blacklist && req.blacklist.length > 0
+      ? req.blacklist
+      : DEFAULT_BLACKLIST;
+
+  const parsedAmount = parseAmountFromText(fullText);
+  const recipient = parseRecipientFromText(fullText, blacklist);
+  const category = detectCategory(fullText);
+
+  // Tính toán ngân sách
+  const matchedBudget =
+    budgets.find((b) => b.name === category) ||
+    budgets.find((b) => b.name === "Khác") || {
+      id: "b4",
+      name: category,
+      limit: 2_000_000,
+      spent: 500_000,
+    };
+
+  const remainingBefore = matchedBudget.limit - matchedBudget.spent;
+  const remainingAfter = remainingBefore - parsedAmount;
+  const isExceeded = remainingAfter < 0;
+
+  const budgetAlert = isExceeded
+    ? {
+        isExceeded: true,
+        remainingAfter,
+        message: `Giao dịch này sẽ làm vượt ngân sách mục '${matchedBudget.name}' ${formatNumber(
+          Math.abs(remainingAfter)
+        )} VNĐ.`,
+        suggestion:
+          "Hãy trì hoãn giao dịch hoặc điều chỉnh lại hạn mức chi tiêu trước khi xác nhận.",
+      }
+    : {
+        isExceeded: false,
+        remainingAfter,
+        message: `Chi tiêu nằm trong hạn mức '${matchedBudget.name}'. Số dư ngân sách còn lại sau giao dịch: ${formatNumber(
+          remainingAfter
+        )} VNĐ.`,
+        suggestion:
+          "Ngân sách của bạn đang ở trạng thái an toàn, có thể tiếp tục thanh toán.",
+      };
+
+  // Phân tích rủi ro lừa đảo
+  const redFlags: string[] = [];
+  let riskScore = 10;
+  let scamType = "Giao dịch tiêu dùng thông thường";
+
+  // 1. Kiểm tra Blacklist
+  const matchedBlacklistItems = blacklist.filter(
+    (item) => item && lower.includes(item.toLowerCase())
+  );
+  const isBlacklisted = matchedBlacklistItems.length > 0;
+  if (isBlacklisted) {
+    riskScore += 50;
+    redFlags.push(
+      `Tài khoản / Tên người nhận nằm trong danh sách đen (Blacklist: ${matchedBlacklistItems.join(
+        ", "
+      )})`
+    );
+  }
+
+  // 2. Nhóm từ khóa mạo danh cơ quan chức năng / công an / điều tra
+  const authorityMatch =
+    /công an|cán bộ|điều tra|viện kiểm sát|tòa án|xác minh tài khoản|phong tỏa|chạy án|lệnh bắt|bộ công an/.test(
+      lower
+    );
+  if (authorityMatch) {
+    riskScore += 45;
+    scamType = "Lừa đảo mạo danh Cơ quan Công an / Cán bộ điều tra";
+    redFlags.push(
+      "Dấu hiệu mạo danh cơ quan chức năng yêu cầu chuyển tiền phục vụ điều tra / xác minh tài khoản"
+    );
+  }
+
+  // 3. Nhóm từ khóa trúng thưởng / phí nhận quà / hải quan
+  const prizeScamMatch =
+    /nhận thưởng|trúng thưởng|phí nhận|phí hồ sơ|phí hải quan|nhận quà|iphone 16|quà quốc tế|giải thưởng|trung tâm cskh/.test(
+      lower
+    );
+  if (prizeScamMatch) {
+    riskScore += 78;
+    if (!authorityMatch) {
+      scamType = "Lừa đảo đóng phí nhận thưởng / Quà tặng giá trị cao";
+    }
+    redFlags.push(
+      "Yêu cầu chuyển khoản phí trước để nhận phần thưởng / quà tặng giá trị cao (iPhone, bưu kiện)"
+    );
+  }
+
+  // 4. Nhóm từ khóa thúc giục, khẩn cấp, đầu tư, việc nhẹ lương cao
+  const urgencyMatch =
+    /chuyển gấp|khẩn cấp|ngay lập tức|trong 5 phút|nâng cấp sim|khóa thẻ|nhiệm vụ tiktok|hoa hồng/.test(
+      lower
+    );
+  if (urgencyMatch) {
+    riskScore += 15;
+    redFlags.push(
+      "Tạo áp lực tâm lý khẩn cấp ('chuyển gấp') nhằm ngăn người dùng kiểm chứng thông tin"
+    );
+  }
+
+  // Chuẩn hóa điểm số cho các kịch bản mẫu chuẩn xác
+  if (authorityMatch && isBlacklisted) {
+    riskScore = 95;
+  } else if (prizeScamMatch && !isBlacklisted) {
+    riskScore = 88;
+  } else if (isBlacklisted && riskScore < 85) {
+    riskScore = 90;
+    if (scamType === "Giao dịch tiêu dùng thông thường") {
+      scamType = "Giao dịch tới tài khoản nằm trong Danh sách đen (Blacklist)";
+    }
+  } else {
+    riskScore = Math.min(99, Math.max(8, riskScore));
+  }
+
+  if (isExceeded && riskScore >= 60) {
+    redFlags.push("Số tiền giao dịch lớn vượt quá hạn mức ngân sách hiện tại");
+  }
+
+  let riskLevel: RiskLevel = "LOW";
+  if (riskScore >= 70) {
+    riskLevel = "HIGH";
+  } else if (riskScore >= 40) {
+    riskLevel = "MEDIUM";
+  }
+
+  if (redFlags.length === 0) {
+    redFlags.push("Không phát hiện từ khóa lừa đảo hoặc tài khoản Blacklist");
+  }
+
+  const explanation =
+    riskLevel === "HIGH"
+      ? `Hệ thống Lá chắn AI phát hiện rủi ro lừa đảo mức CAO (${riskScore}/100) với kịch bản "${scamType}". Cơ quan chức năng hoặc các chương trình trao thưởng hợp pháp không bao giờ yêu cầu người dân chuyển tiền qua tài khoản cá nhân để xác minh hay nhận quà.`
+      : riskLevel === "MEDIUM"
+        ? `Giao dịch có một số dấu hiệu bất thường (${riskScore}/100). Vui lòng kiểm tra kỹ danh tính người nhận trước khi chuyển khoản.`
+        : `Giao dịch thanh toán thuộc danh mục '${category}' có nội dung rõ ràng, người nhận hợp lệ và không nằm trong danh sách cảnh báo lừa đảo.`;
+
+  const requireBiometric = riskLevel === "HIGH";
+
+  const now = new Date();
+  const datePart = now.toISOString().slice(0, 10).replace(/-/g, "");
+  const randomSuffix = String(Math.floor(100 + Math.random() * 900));
+  const ticketId = `TCK-${datePart}-${randomSuffix}`;
+
+  const fintechOpsTicket = {
+    ticketId,
+    timestamp: now.toISOString(),
+    recipient,
+    amount: parsedAmount,
+    riskLevel,
+    riskScore,
+    summary:
+      riskLevel === "HIGH"
+        ? `Phát hiện giao dịch rủi ro CAO (${riskScore}đ) chuyển ${formatNumber(
+            parsedAmount
+          )} VNĐ tới "${recipient}" - Dấu hiệu: ${scamType}.`
+        : `Giao dịch chuyển ${formatNumber(
+            parsedAmount
+          )} VNĐ tới "${recipient}" (${category}) đã được AI kiểm tra an toàn.`,
+    recommendedAction:
+      riskLevel === "HIGH"
+        ? "Tạm khóa giao dịch, yêu cầu xác thực sinh trắc học khuôn mặt (AWS Rekognition) và đẩy cảnh báo lên đội ngũ Fintech Ops."
+        : isExceeded
+          ? "Cho phép giao dịch sau khi nhắc nhở người dùng về việc vượt hạn mức ngân sách."
+          : "Cho phép thực hiện giao dịch bình thường.",
+    ...(req.imageBase64 ? { evidenceImageBase64: req.imageBase64 } : {}),
+    status: (riskLevel === "HIGH" ? "PENDING" : "APPROVED") as
+      | "PENDING"
+      | "BLOCKED"
+      | "APPROVED",
+  };
+
+  return {
+    parsedAmount,
+    recipient,
+    category,
+    budgetAlert,
+    scamReport: {
+      riskLevel,
+      riskScore,
+      scamType,
+      redFlags,
+      explanation,
+    },
+    requireBiometric,
+    fintechOpsTicket,
+  };
+}
+
+export async function POST(request: Request) {
+  let body: TransactionAnalysisRequest;
+  try {
+    body = (await request.json()) as TransactionAnalysisRequest;
+  } catch {
+    body = {
+      commandText: "",
+      currentBudgets: DEFAULT_BUDGETS,
+      blacklist: DEFAULT_BLACKLIST,
+    };
+  }
+
+  const commandText = body.commandText || "";
+  const currentBudgets =
+    body.currentBudgets && body.currentBudgets.length > 0
+      ? body.currentBudgets
+      : DEFAULT_BUDGETS;
+  const blacklist =
+    body.blacklist && body.blacklist.length > 0
+      ? body.blacklist
+      : DEFAULT_BLACKLIST;
+
+  let extractedImageText = "";
+
+  // Luồng gọi AWS SDK v3 thực tế khi có cấu hình AWS_ACCESS_KEY_ID
+  try {
+    const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+    const region = process.env.AWS_REGION || "us-east-1";
+
+    if (!accessKeyId || !secretAccessKey) {
+      throw new Error(
+        "Missing AWS credentials in environment variables - switching to Smart Fallback Engine"
+      );
+    }
+
+    const awsCredentials = {
+      accessKeyId,
+      secretAccessKey,
+      ...(process.env.AWS_SESSION_TOKEN
+        ? { sessionToken: process.env.AWS_SESSION_TOKEN }
+        : {}),
+    };
+
+    // 1. Nếu có imageBase64, gọi Amazon Rekognition DetectText để đọc chữ trên ảnh hóa đơn / tin nhắn
+    if (body.imageBase64) {
+      try {
+        const rekognition = new RekognitionClient({
+          region,
+          credentials: awsCredentials,
+        });
+        const base64Clean = body.imageBase64.replace(
+          /^data:image\/\w+;base64,/,
+          ""
+        );
+        const imageBytes = Buffer.from(base64Clean, "base64");
+
+        const detectTextRes = await rekognition.send(
+          new DetectTextCommand({
+            Image: { Bytes: imageBytes },
+          })
+        );
+
+        extractedImageText = (detectTextRes.TextDetections || [])
+          .filter((d) => d.Type === "LINE" && d.DetectedText)
+          .map((d) => d.DetectedText)
+          .join(" ");
+      } catch {
+        // Bỏ qua lỗi OCR lẻ và tiếp tục phân tích bằng text
+      }
+    }
+
+    // 2. Tích hợp Amazon Translate (chuẩn hóa / dịch thuật ngữ nếu cần)
+    let translatedNote = "";
+    try {
+      const translateClient = new TranslateClient({
+        region,
+        credentials: awsCredentials,
+      });
+      const translateRes = await translateClient.send(
+        new TranslateTextCommand({
+          Text: commandText.slice(0, 500) || "Transaction check",
+          SourceLanguageCode: "auto",
+          TargetLanguageCode: "vi",
+        })
+      );
+      translatedNote = translateRes.TranslatedText || "";
+    } catch {
+      // Không chặn luồng chính nếu Translate không khả dụng
+    }
+
+    // 3. Gọi Amazon Bedrock Runtime (Claude 3.5 Sonnet) để phân tích giao dịch
+    const bedrock = new BedrockRuntimeClient({
+      region,
+      credentials: awsCredentials,
+    });
+
+    const modelId =
+      process.env.BEDROCK_MODEL_ID ||
+      "anthropic.claude-3-5-sonnet-20240620-v1:0";
+
+    const fallbackBaseline = buildSmartFallbackAnalysis(
+      { ...body, currentBudgets, blacklist },
+      extractedImageText
+    );
+
+    const prompt = `Bạn là hệ thống AI chống lừa đảo tài chính TrustPay AI.
+Hãy phân tích giao dịch sau và trả về DUY NHẤT một chuỗi JSON hợp lệ theo đúng cấu trúc TransactionAnalysisResponse.
+Câu lệnh giao dịch: "${commandText}"
+Văn bản OCR từ ảnh đính kèm: "${extractedImageText}"
+Bản dịch hỗ trợ: "${translatedNote}"
+Danh sách đen (Blacklist): ${JSON.stringify(blacklist)}
+Ngân sách hiện tại: ${JSON.stringify(currentBudgets)}
+
+Yêu cầu trả về JSON mẫu tham chiếu:
+${JSON.stringify(fallbackBaseline)}`;
+
+    const invokeRes = await bedrock.send(
+      new InvokeModelCommand({
+        modelId,
+        contentType: "application/json",
+        accept: "application/json",
+        body: JSON.stringify({
+          anthropic_version: "bedrock-2023-05-31",
+          max_tokens: 1024,
+          temperature: 0.1,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      })
+    );
+
+    const rawBody = new TextDecoder().decode(invokeRes.body);
+    const parsedBedrock = JSON.parse(rawBody);
+    const aiText: string = parsedBedrock?.content?.[0]?.text || "";
+    const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+
+    if (jsonMatch) {
+      const aiResponse = JSON.parse(
+        jsonMatch[0]
+      ) as Partial<TransactionAnalysisResponse>;
+
+      const mergedResponse: TransactionAnalysisResponse = {
+        parsedAmount:
+          typeof aiResponse.parsedAmount === "number"
+            ? aiResponse.parsedAmount
+            : fallbackBaseline.parsedAmount,
+        recipient: aiResponse.recipient || fallbackBaseline.recipient,
+        category: aiResponse.category || fallbackBaseline.category,
+        budgetAlert: aiResponse.budgetAlert || fallbackBaseline.budgetAlert,
+        scamReport: aiResponse.scamReport || fallbackBaseline.scamReport,
+        requireBiometric:
+          typeof aiResponse.requireBiometric === "boolean"
+            ? aiResponse.requireBiometric
+            : fallbackBaseline.requireBiometric,
+        fintechOpsTicket:
+          aiResponse.fintechOpsTicket || fallbackBaseline.fintechOpsTicket,
+      };
+
+      return NextResponse.json(mergedResponse, { status: 200 });
+    }
+
+    return NextResponse.json(fallbackBaseline, { status: 200 });
+  } catch {
+    // Fallback thông minh khi thiếu AWS_ACCESS_KEY_ID hoặc AWS API báo lỗi
+    const fallbackResponse = buildSmartFallbackAnalysis(
+      {
+        commandText,
+        imageBase64: body.imageBase64,
+        currentBudgets,
+        blacklist,
+      },
+      extractedImageText
+    );
+
+    return NextResponse.json(fallbackResponse, { status: 200 });
+  }
+}

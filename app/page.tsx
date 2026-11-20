@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ShieldCheck,
   Cloud,
@@ -11,21 +11,23 @@ import {
   CheckCircle2,
   Sparkles,
   Lock,
-  Layers,
-  Activity,
+  X,
+  AlertTriangle,
 } from "lucide-react";
-import type { BudgetCategory, FintechOpsTicket } from "@/types/trustpay";
+import { DEFAULT_BLACKLIST, DEFAULT_BUDGETS } from "@/lib/mock-scenarios";
+import WalletSidebar from "@/components/user-wallet/WalletSidebar";
+import TransactionInputPanel from "@/components/user-wallet/TransactionInputPanel";
+import AiShieldResultPanel from "@/components/user-wallet/AiShieldResultPanel";
+import BiometricModal from "@/components/BiometricModal";
+import FraudOpsDashboard from "@/components/fintech-ops/FraudOpsDashboard";
+import type {
+  BudgetCategory,
+  FintechOpsTicket,
+  TransactionAnalysisResponse,
+  VerifyFaceResponse,
+} from "@/types/trustpay";
 
 const DEFAULT_WALLET_BALANCE = 15_000_000;
-
-const DEFAULT_BUDGETS: BudgetCategory[] = [
-  { id: "b1", name: "Ăn uống", limit: 3_000_000, spent: 1_200_000 },
-  { id: "b2", name: "Mua sắm", limit: 4_000_000, spent: 2_500_000 },
-  { id: "b3", name: "Di chuyển", limit: 1_000_000, spent: 400_000 },
-  { id: "b4", name: "Khác", limit: 2_000_000, spent: 500_000 },
-];
-
-const DEFAULT_BLACKLIST: string[] = ["1903888999", "0912345678"];
 
 const DEFAULT_OPS_TICKETS: FintechOpsTicket[] = [
   {
@@ -44,40 +46,204 @@ const DEFAULT_OPS_TICKETS: FintechOpsTicket[] = [
 ];
 
 type ActiveTab = "user-wallet" | "fintech-ops";
+type TransactionStatus = "idle" | "completed" | "cancelled";
+
+interface ToastNotification {
+  type: "success" | "warning" | "info";
+  title: string;
+  description: string;
+}
 
 function formatVND(amount: number): string {
-  return new Intl.NumberFormat("vi-VN").format(amount) + "đ";
+  return new Intl.NumberFormat("vi-VN").format(Math.round(amount)) + "đ";
 }
 
 export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>("user-wallet");
 
-  // Trạng thái cốt lõi của ứng dụng Demo (sẵn sàng truyền xuống các component con)
-  const [walletBalance, setWalletBalance] = useState<number>(
-    DEFAULT_WALLET_BALANCE
-  );
+  // Các state dùng chung giữa Tab 1, Modal Sinh trắc học và Tab 2
+  const [balance, setBalance] = useState<number>(DEFAULT_WALLET_BALANCE);
   const [budgets, setBudgets] = useState<BudgetCategory[]>(() =>
     DEFAULT_BUDGETS.map((b) => ({ ...b }))
   );
   const [blacklist, setBlacklist] = useState<string[]>([...DEFAULT_BLACKLIST]);
+  const [analysisResult, setAnalysisResult] =
+    useState<TransactionAnalysisResponse | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [transactionStatus, setTransactionStatus] =
+    useState<TransactionStatus>("idle");
+  const [isBiometricOpen, setIsBiometricOpen] = useState<boolean>(false);
+  const [isBiometricVerified, setIsBiometricVerified] =
+    useState<boolean>(false);
   const [opsTickets, setOpsTickets] = useState<FintechOpsTicket[]>(() =>
     DEFAULT_OPS_TICKETS.map((t) => ({ ...t }))
   );
+
   const [resetDone, setResetDone] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
+  const [toast, setToast] = useState<ToastNotification | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (nextToast: ToastNotification) => {
+    setToast(nextToast);
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null);
+    }, 4500);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   const pendingAlertsCount = opsTickets.filter(
     (ticket) => ticket.status === "PENDING"
   ).length;
 
-  const totalBudgetLimit = budgets.reduce((sum, b) => sum + b.limit, 0);
-  const totalBudgetSpent = budgets.reduce((sum, b) => sum + b.spent, 0);
+  const handleAnalysisComplete = (
+    result: TransactionAnalysisResponse,
+    meta: { commandText: string; imageBase64?: string }
+  ) => {
+    setAnalysisResult(result);
+    setIsBiometricVerified(false);
+    setTransactionStatus("idle");
+
+    if (
+      result.scamReport.riskLevel === "MEDIUM" ||
+      result.scamReport.riskLevel === "HIGH"
+    ) {
+      const newTicket: FintechOpsTicket = {
+        ...result.fintechOpsTicket,
+        evidenceImageBase64:
+          meta.imageBase64 ?? result.fintechOpsTicket.evidenceImageBase64,
+        status: "PENDING",
+      };
+
+      setOpsTickets((prev) => [
+        newTicket,
+        ...prev.filter((t) => t.ticketId !== newTicket.ticketId),
+      ]);
+
+      showToast({
+        type: "warning",
+        title: `Đã đẩy cảnh báo ${result.scamReport.riskLevel} sang Fintech Ops`,
+        description: `Ticket ${newTicket.ticketId} (${formatVND(
+          newTicket.amount
+        )}) đã được đồng bộ thời gian thực sang Tab 2.`,
+      });
+    }
+  };
+
+  const handleRequestBiometric = () => {
+    setIsBiometricOpen(true);
+  };
+
+  const handleBiometricVerified = (verifyResult: VerifyFaceResponse) => {
+    if (verifyResult.matched) {
+      setIsBiometricVerified(true);
+      setIsBiometricOpen(false);
+      showToast({
+        type: "success",
+        title: "Xác thực khuôn mặt thành công",
+        description: `Độ khớp ${verifyResult.similarity}%. Bạn có thể xác nhận chuyển tiền ngay bây giờ.`,
+      });
+    }
+  };
+
+  const handleConfirmTransfer = (analysis: TransactionAnalysisResponse) => {
+    if (analysis.parsedAmount <= 0 || analysis.parsedAmount > balance) {
+      return;
+    }
+
+    setBalance((prev) => Math.max(0, prev - analysis.parsedAmount));
+    setBudgets((prev) =>
+      prev.map((budget) =>
+        budget.name === analysis.category
+          ? { ...budget, spent: budget.spent + analysis.parsedAmount }
+          : budget
+      )
+    );
+    setTransactionStatus("completed");
+    setIsBiometricOpen(false);
+
+    showToast({
+      type: "success",
+      title: `Chuyển tiền thành công ${formatVND(analysis.parsedAmount)}`,
+      description: `Đã chuyển tới ${analysis.recipient} • Cập nhật ngân sách "${analysis.category}".`,
+    });
+  };
+
+  const handleCancelTransaction = () => {
+    setTransactionStatus("cancelled");
+    setIsBiometricOpen(false);
+    setIsBiometricVerified(false);
+    showToast({
+      type: "info",
+      title: "Giao dịch đã được hủy an toàn",
+      description: "Số dư ví và ngân sách của bạn vẫn được giữ nguyên.",
+    });
+  };
+
+  const handleBlockTicket = (ticketId: string, recipient: string) => {
+    setOpsTickets((prev) =>
+      prev.map((ticket) =>
+        ticket.ticketId === ticketId ? { ...ticket, status: "BLOCKED" } : ticket
+      )
+    );
+
+    const normalizedRecipient = recipient.trim();
+    if (normalizedRecipient) {
+      setBlacklist((prev) => {
+        const exists = prev.some(
+          (item) =>
+            item.trim().toLowerCase() === normalizedRecipient.toLowerCase()
+        );
+        return exists ? prev : [normalizedRecipient, ...prev];
+      });
+    }
+
+    showToast({
+      type: "warning",
+      title: "Đã chặn giao dịch & cập nhật Blacklist",
+      description: `Đối tượng "${normalizedRecipient}" đã được đưa vào danh sách đen thời gian thực ở cả Tab 1 và Tab 2.`,
+    });
+  };
+
+  const handleApproveTicket = (ticketId: string) => {
+    setOpsTickets((prev) =>
+      prev.map((ticket) =>
+        ticket.ticketId === ticketId
+          ? { ...ticket, status: "APPROVED" }
+          : ticket
+      )
+    );
+
+    showToast({
+      type: "success",
+      title: `Đã phê duyệt an toàn (${ticketId})`,
+      description: "Ticket cảnh báo đã được đánh dấu là giao dịch hợp lệ.",
+    });
+  };
 
   const handleResetDemo = () => {
-    setWalletBalance(DEFAULT_WALLET_BALANCE);
+    setBalance(DEFAULT_WALLET_BALANCE);
     setBudgets(DEFAULT_BUDGETS.map((b) => ({ ...b })));
     setBlacklist([...DEFAULT_BLACKLIST]);
+    setAnalysisResult(null);
+    setIsAnalyzing(false);
+    setTransactionStatus("idle");
+    setIsBiometricOpen(false);
+    setIsBiometricVerified(false);
     setOpsTickets(DEFAULT_OPS_TICKETS.map((t) => ({ ...t })));
+    setResetKey((prev) => prev + 1);
+    setToast(null);
     setResetDone(true);
     setTimeout(() => setResetDone(false), 2200);
   };
@@ -172,7 +338,7 @@ export default function Home() {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       {/* Header cố định */}
-      <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/95 shadow-xs backdrop-blur-md">
+      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 shadow-xs backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
           {/* Trái: Logo + Tên hệ thống + Badge AWS */}
           <div className="flex items-center gap-3">
@@ -182,8 +348,7 @@ export default function Home() {
             <div className="flex flex-col">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-lg font-bold tracking-tight text-slate-900">
-                  TrustPay{" "}
-                  <span className="text-[#a50064]">AI</span>
+                  TrustPay <span className="text-[#a50064]">AI</span>
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-full border border-pink-200 bg-pink-50 px-2.5 py-0.5 text-[11px] font-semibold text-[#a50064]">
                   <Cloud className="h-3 w-3" />
@@ -267,134 +432,104 @@ export default function Home() {
         </div>
       </header>
 
-      {/* 3. Nội dung chính: 2 khung placeholder sạch sẽ cho Tab 1 & Tab 2 */}
+      {/* Thông báo Toast thời gian thực */}
+      {toast && (
+        <div className="fixed right-4 bottom-4 z-50 w-full max-w-sm">
+          <div
+            className={`flex items-start gap-3 rounded-2xl border p-4 shadow-xl backdrop-blur-md ${
+              toast.type === "success"
+                ? "border-emerald-200 bg-emerald-50/95 text-emerald-900"
+                : toast.type === "warning"
+                  ? "border-rose-200 bg-rose-50/95 text-rose-900"
+                  : "border-slate-200 bg-white/95 text-slate-800"
+            }`}
+          >
+            {toast.type === "success" ? (
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+            ) : toast.type === "warning" ? (
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
+            ) : (
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#a50064]" />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold">{toast.title}</p>
+              <p className="mt-0.5 text-xs opacity-85">{toast.description}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              aria-label="Đóng thông báo"
+              className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg opacity-60 hover:bg-black/5 hover:opacity-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Nội dung chính: Tab 1 (Ví Người Dùng) & Tab 2 (Fintech Ops) */}
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">
         {activeTab === "user-wallet" ? (
           <section
             aria-label="Ví Người Dùng & Lá Chắn AI"
-            className="flex flex-1 flex-col gap-6"
+            className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12"
           >
-            {/* Thanh tóm tắt nhanh trạng thái ví hiện tại */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="rounded-2xl bg-gradient-to-br from-[#a50064] to-[#d82d8b] p-5 text-white shadow-md shadow-[#a50064]/15">
-                <p className="text-xs font-medium text-pink-100">
-                  Số dư Ví TrustPay
-                </p>
-                <p className="mt-1.5 font-mono text-2xl font-bold tracking-tight">
-                  {formatVND(walletBalance)}
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
-                <p className="text-xs font-medium text-slate-500">
-                  Ngân sách đã chi / Tổng hạn mức
-                </p>
-                <p className="mt-1.5 font-mono text-xl font-bold text-slate-900">
-                  {formatVND(totalBudgetSpent)}{" "}
-                  <span className="text-sm font-normal text-slate-400">
-                    / {formatVND(totalBudgetLimit)}
-                  </span>
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
-                <p className="text-xs font-medium text-slate-500">
-                  Trạng thái Lá chắn AI
-                </p>
-                <p className="mt-1.5 flex items-center gap-2 text-base font-semibold text-emerald-600">
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                  Đang bảo vệ thời gian thực
-                </p>
-              </div>
+            {/* Cột trái: Số dư ví, Ngân sách & Blacklist */}
+            <div className="lg:col-span-4">
+              <WalletSidebar
+                walletBalance={balance}
+                budgets={budgets}
+                blacklist={blacklist}
+              />
             </div>
 
-            {/* Khung Placeholder cho các component con của Tab 1 */}
-            <div className="flex flex-1 flex-col items-center justify-center rounded-3xl border-2 border-dashed border-pink-200 bg-white/80 p-10 text-center">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-pink-50 text-[#a50064]">
-                <Layers className="h-7 w-7" />
-              </div>
-              <h2 className="text-lg font-bold text-slate-900">
-                Khung Ví Người Dùng &amp; Lá Chắn AI
-              </h2>
-              <p className="mt-2 max-w-md text-sm text-slate-500">
-                Khu vực sẵn sàng để tích hợp các component con:{" "}
-                <span className="font-medium text-slate-700">
-                  Quản lý ngân sách ({budgets.length} danh mục)
-                </span>
-                ,{" "}
-                <span className="font-medium text-slate-700">
-                  Chuyển tiền bằng ngôn ngữ tự nhiên &amp; Ảnh hóa đơn
-                </span>
-                , và{" "}
-                <span className="font-medium text-slate-700">
-                  Xác thực khuôn mặt sinh trắc học
-                </span>
-                .
-              </p>
+            {/* Cột phải: Nhập lệnh chuyển tiền & Báo cáo Lá chắn AI */}
+            <div className="flex flex-col gap-6 lg:col-span-8">
+              <TransactionInputPanel
+                key={resetKey}
+                budgets={budgets}
+                blacklist={blacklist}
+                onAnalysisComplete={handleAnalysisComplete}
+                onAnalyzingChange={setIsAnalyzing}
+              />
+
+              <AiShieldResultPanel
+                analysis={analysisResult}
+                walletBalance={balance}
+                isAnalyzing={isAnalyzing}
+                transactionStatus={transactionStatus}
+                biometricVerified={isBiometricVerified}
+                onConfirmTransfer={handleConfirmTransfer}
+                onRequestBiometric={handleRequestBiometric}
+                onCancelTransaction={handleCancelTransaction}
+              />
             </div>
           </section>
         ) : (
           <section
             aria-label="Fintech Future Workspace (Ops)"
-            className="flex flex-1 flex-col gap-6"
+            className="flex flex-1 flex-col"
           >
-            {/* Thanh tóm tắt nhanh trạng thái Ops */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-5">
-                <p className="text-xs font-medium text-rose-700">
-                  Cảnh báo đang chờ xử lý (PENDING)
-                </p>
-                <p className="mt-1.5 font-mono text-2xl font-bold text-rose-700">
-                  {pendingAlertsCount}
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
-                <p className="text-xs font-medium text-slate-500">
-                  Tổng số Ticket giám sát
-                </p>
-                <p className="mt-1.5 font-mono text-2xl font-bold text-slate-900">
-                  {opsTickets.length}
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
-                <p className="text-xs font-medium text-slate-500">
-                  Tài khoản trong Blacklist
-                </p>
-                <p className="mt-1.5 font-mono text-2xl font-bold text-slate-900">
-                  {blacklist.length}
-                </p>
-              </div>
-            </div>
-
-            {/* Khung Placeholder cho các component con của Tab 2 */}
-            <div className="flex flex-1 flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-300 bg-white/80 p-10 text-center">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-pink-50 text-[#a50064]">
-                <Activity className="h-7 w-7" />
-              </div>
-              <h2 className="text-lg font-bold text-slate-900">
-                Khung Fintech Future Workspace (Ops)
-              </h2>
-              <p className="mt-2 max-w-md text-sm text-slate-500">
-                Khu vực sẵn sàng để tích hợp các component vận hành rủi ro:{" "}
-                <span className="font-medium text-slate-700">
-                  Danh sách Ticket cảnh báo AI
-                </span>
-                ,{" "}
-                <span className="font-medium text-slate-700">
-                  Phê duyệt / Chặn giao dịch nghi ngờ
-                </span>
-                , và{" "}
-                <span className="font-medium text-slate-700">
-                  Quản trị danh sách đen (Blacklist)
-                </span>
-                .
-              </p>
-            </div>
+            <FraudOpsDashboard
+              tickets={opsTickets}
+              blacklist={blacklist}
+              onBlockTicket={handleBlockTicket}
+              onApproveTicket={handleApproveTicket}
+            />
           </section>
         )}
       </main>
+
+      {/* Modal xác thực Sinh trắc học Khuôn mặt */}
+      <BiometricModal
+        isOpen={isBiometricOpen}
+        recipient={analysisResult?.recipient}
+        amount={analysisResult?.parsedAmount}
+        riskScore={analysisResult?.scamReport.riskScore}
+        onClose={() => setIsBiometricOpen(false)}
+        onVerified={handleBiometricVerified}
+        onCancelTransaction={handleCancelTransaction}
+      />
     </div>
   );
 }

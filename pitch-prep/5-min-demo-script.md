@@ -1,7 +1,7 @@
-# TrustPay AI — Kịch bản Demo & Thuyết trình 5 phút
+# TrustPay AI — Kịch bản Demo & Thuyết trình 5 phút (bản vòng chung kết)
 
 > **Sự kiện:** MoMo TechDay 2026 · **Thời lượng:** 5:00 (10 mốc × 30 giây) · **Đội hình:** 1 người nói (Presenter), 1 người điều khiển máy (Driver). Nếu chỉ có 1 người, Presenter tự thao tác và nói theo đúng cột "Câu thoại".
-> **Nguyên tắc:** mọi nhãn nút trong tài liệu này là **nhãn thật** trên giao diện TrustPay AI. Mọi số liệu thị trường phải được thay bằng nguồn chính thức đã kiểm chứng trước giờ thi (xem ô `[CHÈN SỐ LIỆU]`).
+> **Nguyên tắc:** mọi nhãn nút trong ngoặc kép **"…"** là **nhãn thật** trên giao diện tiếng Việt của TrustPay AI. Mọi số liệu thị trường phải được thay bằng nguồn chính thức đã kiểm chứng trước giờ thi (ô `[CHÈN SỐ LIỆU]`). Mọi đơn giá AWS là giả định mẫu (xem `pitch-prep/unit-economics-finops.md` mục 1.4).
 
 ---
 
@@ -9,15 +9,17 @@
 
 | # | Việc cần làm | Lý do |
 |---|---|---|
-| 1 | Ở nơi có Internet ổn định: `npm ci` rồi `npm run build` | `next/font/google` tải font lúc build; sau build, font được phục vụ cục bộ, không cần mạng |
-| 2 | Tại hội trường: `npm run start` và mở `http://localhost:3000` | Chạy trên laptop nên **không phụ thuộc mạng hội trường** |
-| 3 | Chọn chế độ AI: có mạng tốt thì giữ `.env.local` (gọi AWS thật); mạng yếu thì đổi tên `.env.local` → `.env.local.bak` rồi khởi động lại | Thiếu AWS credentials ⇒ API chuyển ngay sang **Offline Fallback** (bộ luật xác định), phản hồi tức thì |
-| 4 | Chạy thử 1 lượt cả 3 kịch bản, rồi bấm **"Reset dữ liệu Demo"** (nút chuyển thành "Đã khôi phục!") | Đưa số dư về 15.000.000đ, ticket Ops về trạng thái mặc định |
-| 5 | Zoom trình duyệt 110–125%, bật chế độ toàn màn hình, tắt thông báo hệ điều hành | Chữ đủ to trên máy chiếu, không bị popup cắt ngang |
-| 6 | Mở sẵn tab IDE: `.kiro/specs/trustpay-ai/requirements.md`, `.kiro/hooks/`, `.github/workflows/trustpay-enterprise-ci.yml` | Dùng cho mốc Kiro Spec-Driven (3:30–4:30) |
-| 7 | Mở sẵn video dự phòng (theo `docs/DEMO_VIDEO_SCRIPT.md`) trên thiết bị thứ hai | Phương án cuối nếu laptop gặp sự cố |
+| 1 | Ở nơi có Internet ổn định: `npm ci` → `npx tsc --noEmit` → `npm run test:fraud` → `npm run test:injection` → `npm run build` | Cổng chất lượng phải sạch (F01–F25, P01–P20); `next/font/google` tải font lúc build |
+| 2 | Tại hội trường: `npm run start`, mở `http://localhost:3000` bằng **Chrome hoặc Edge** | Chạy trên laptop nên không phụ thuộc mạng hội trường; Chrome/Edge hỗ trợ đọc QR từ ảnh (BarcodeDetector) trên nhiều hệ điều hành |
+| 3 | Chọn chế độ AI: mạng tốt thì giữ `.env.local` (gọi AWS thật); mạng yếu thì đổi tên `.env.local` → `.env.local.bak` rồi khởi động lại | Thiếu AWS credentials ⇒ API chạy **Offline Heuristic** tức thì; bảng FinOps ghi rõ lý do *"chưa cấu hình AWS credentials (chế độ demo)"* |
+| 4 | Chạy thử 1 lượt toàn bộ kịch bản, sau đó bấm **"Reset Demo"** 2 lần (**"Bấm lần nữa để xác nhận"** → **"Đã khôi phục!"**) | Số dư về 15.000.000đ, ticket/Blacklist/cuộc gọi mô phỏng/QR/Copilot về mặc định. Reset **không** đổi ngôn ngữ và theme |
+| 5 | Chọn theme theo máy chiếu: phòng sáng → **"☀️ Light"**, phòng tối → **"🌙 Dark"** (góc phải header, cạnh **VI \| EN**) | Lựa chọn được lưu; lần đầu mở app tự theo theme hệ điều hành |
+| 6 | Zoom trình duyệt 110–125%, toàn màn hình, tắt thông báo hệ điều hành | Chữ đủ to trên máy chiếu |
+| 7 | Mở sẵn DevTools ở chế độ thiết bị **iPhone 12 Pro (390 px)** trong một cửa sổ riêng | Dùng cho mốc 4:00–4:30 (mobile-first) |
+| 8 | Mở sẵn tab IDE: `.kiro/specs/trustpay-ai/requirements.md`, `.kiro/hooks/`, `tests/fraud-adversarial-suite.ts` (F21–F25) | Dẫn chứng nhanh khi được hỏi |
+| 9 | Mở sẵn video dự phòng (theo `docs/DEMO_VIDEO_SCRIPT.md`) trên thiết bị thứ hai | Phương án cuối nếu laptop gặp sự cố |
 
-**Trạng thái màn hình lúc bắt đầu:** màn hình đăng nhập TrustPay AI với nút **"Đăng nhập nhanh bằng Tài khoản Demo (Ban Giám Khảo)"**.
+**Trạng thái màn hình lúc bắt đầu:** thẻ **"Chào mừng đến với TrustPay AI"** với 2 nút **"Vào Ví ngay"** và **"Vào Ops ngay"**.
 
 ---
 
@@ -25,16 +27,16 @@
 
 | Mốc | Phần | Màn hình | Mục tiêu với giám khảo |
 |---|---|---|---|
-| 0:00–0:30 | Hook mở đầu | Màn hình đăng nhập | Tạo tình huống mà ai cũng có thể là nạn nhân |
-| 0:30–1:00 | Nỗi đau lừa đảo chuyển khoản tại Việt Nam | Màn hình đăng nhập → Tab 1 | Chỉ ra khoảng trống: cảnh báo đến **sau** khi tiền đã đi |
-| 1:00–1:30 | Demo kịch bản 1 — An toàn (LOW) | Tab 1 | 99% giao dịch bình thường đi thẳng, không bị làm phiền |
-| 1:30–2:00 | Demo kịch bản 2 — Vượt ngân sách | Tab 1 | AI nhắc nhở, không chặn — tôn trọng quyền quyết định |
-| 2:00–2:30 | Demo kịch bản 3 — Lừa đảo mạo danh (HIGH 95) | Tab 1 | AI bóc tách và gọi tên chiêu lừa trước khi tiền rời ví |
-| 2:30–3:00 | Xác thực khuôn mặt bắt buộc → Hủy giao dịch | Modal sinh trắc học | Step-up theo Thông tư 50 / QĐ 2345 |
-| 3:00–3:30 | Fintech Ops chặn & cập nhật Blacklist | Tab 2 → Tab 1 | Vòng khép kín 2 chiều giữa người dùng và đội vận hành |
-| 3:30–4:00 | Kiến trúc AWS Bedrock / Rekognition + Offline Fallback | Slide kiến trúc / README | Hệ thống chịu lỗi, chạy được cả khi mất AWS |
-| 4:00–4:30 | Kiro Spec-Driven Development | IDE (specs, hooks, CI) | Chất lượng kỹ thuật kiểm chứng được, không chỉ là demo |
-| 4:30–5:00 | Kinh tế học đơn vị & Kết luận | Slide kết | Chi phí thấp, ROI rõ, lời kêu gọi hành động |
+| 0:00–0:30 | Hook: cuộc gọi "cán bộ điều tra" | Thẻ chào mừng → Ví | Ai cũng có thể là nạn nhân, kể cả khi lệnh chuyển trông vô hại |
+| 0:30–1:00 | AI Payment Copilot chuyển tiền bằng lời | Tab "Chuyển tiền & Lá chắn AI" | 99% giao dịch bình thường đi thẳng, không bị làm phiền |
+| 1:00–1:30 | Copilot tra hạn mức thật & soát gói trừ tiền ngầm | Copilot → "Subscription Guard" | Ví là trợ lý tài chính, không chỉ là cổng thanh toán |
+| 1:30–2:00 | Soi mã VietQR: mã thật được trả, mã dán đè bị chặn | Tab "Soi mã VietQR (QR Inspector)" | Chặn chiêu QR dán đè ngay tại quầy, trước khi quét tiền |
+| 2:00–2:30 | Active Call Shield: chuyển tiền khi đang nghe máy | Khung chuyển tiền | Ngữ cảnh cuộc gọi biến lệnh "sạch" thành rủi ro CAO, tạm giữ 15 giây |
+| 2:30–3:00 | Người giám hộ chặn & biên bản bảo vệ | Thẻ Hạ nhiệt + điện thoại mô phỏng | Người thân là lớp phòng thủ thứ hai, có bằng chứng che PII |
+| 3:00–3:30 | Fintech Ops phong tỏa đường dây 1903xxxx | Tab "Fintech Future Workspace (Ops)" | Vòng khép kín 2 chiều Ví ↔ Ops |
+| 3:30–4:00 | AWS Security & FinOps | Bảng "AWS Security & FinOps" | Che PII theo NĐ 13 trước Bedrock, Circuit Breaker, ~$0.0012/GD |
+| 4:00–4:30 | Light/Dark, mobile-first, Hướng dẫn 5 chủ đề, Kiro | Header, DevTools 390 px, IDE | Sẵn sàng cho người dùng thật và kiểm chứng được chất lượng |
+| 4:30–5:00 | Kết luận & lời kêu gọi | Slide kết | Chi phí thấp, ROI rõ, sẵn sàng tích hợp MoMo |
 
 ---
 
@@ -42,141 +44,140 @@
 
 ### ⏱ 0:00–0:30 — Hook mở đầu
 
-**Màn hình:** màn hình đăng nhập TrustPay AI (logo khiên, badge "AWS Serverless Powered").
+**Màn hình:** thẻ **"Chào mừng đến với TrustPay AI"**.
 
-**Thao tác:** chưa bấm gì. Presenter nhìn về phía giám khảo.
+**Thao tác:** ở giây 0:25, Driver bấm **"Vào Ví ngay"** → tab **"Ví Người Dùng & Lá Chắn AI"**, thẻ **"Số dư ví khả dụng"** hiển thị **15.000.000đ**.
 
 **Câu thoại:**
-> "Thưa Ban Giám Khảo, hãy tưởng tượng điện thoại của quý vị đổ chuông: *'Tôi là cán bộ điều tra. Tài khoản của anh liên quan đến một vụ án. Anh cần chuyển gấp 12 triệu để xác minh.'*
-> Câu hỏi hôm nay không phải là *người dùng có bị lừa không*. Câu hỏi là: **ví điện tử có kịp lên tiếng trước khi tiền rời đi hay không?**
-> TrustPay AI là câu trả lời: mỗi lệnh chuyển tiền đều được AI *soát vé* trước khi tiền rời ví."
+> "Thưa Ban Giám Khảo, điện thoại đổ chuông: *'Tôi là cán bộ điều tra. Tài khoản của anh liên quan vụ án rửa tiền, sẽ bị phong tỏa trong 30 phút. Anh chuyển gấp sang tài khoản an toàn.'*
+> Kẻ gian không cần nạn nhân gõ chữ 'công an' vào lệnh chuyển. Hắn chỉ cần nạn nhân **đang cầm máy**.
+> TrustPay AI soát mọi lệnh chuyển **trước khi tiền rời ví**, và nhìn được cả bối cảnh: cuộc gọi, mã QR, gói trừ tiền ngầm."
 
-**Mẹo:** nói chậm câu in đậm. Không đọc slide.
+`[CHÈN SỐ LIỆU]` — *số vụ / thiệt hại lừa đảo trực tuyến tại Việt Nam năm gần nhất, nguồn Bộ Công an hoặc NHNN.* Không nói số khi chưa kiểm chứng nguồn.
 
 ---
 
-### ⏱ 0:30–1:00 — Nỗi đau lừa đảo chuyển khoản tại Việt Nam
+### ⏱ 0:30–1:00 — AI Payment Copilot: chuyển tiền bằng lời (LOW)
 
-**Màn hình:** vẫn màn hình đăng nhập (hoặc 1 slide số liệu nếu có).
-
-**Thao tác:** ở giây 0:55, Driver bấm **"Đăng nhập nhanh bằng Tài khoản Demo (Ban Giám Khảo)"** → vào Tab 1 **"Ví Người Dùng & Lá Chắn AI"**, số dư **15.000.000đ**.
-
-**Câu thoại:**
-> "`[CHÈN SỐ LIỆU]` — *số vụ / thiệt hại do lừa đảo trực tuyến tại Việt Nam năm gần nhất, trích nguồn Bộ Công an hoặc NHNN, ghi rõ năm.*
-> Các chiêu quen thuộc: giả danh công an, 'trúng thưởng nộp phí', hóa đơn chuyển khoản giả, mã QR dán đè ở quầy thanh toán.
-> Điểm chung: nạn nhân **tự tay** bấm chuyển. Hệ thống hiện nay thường cảnh báo **sau** giao dịch — khi tiền đã đi. Chúng tôi đặt lớp bảo vệ **ngay trước** nút chuyển tiền."
-
-**Mẹo:** không dùng con số khi chưa kiểm chứng nguồn. Nếu không có số liệu, chỉ nói phần chiêu thức.
-
----
-
-### ⏱ 1:00–1:30 — Demo kịch bản 1: Giao dịch an toàn (LOW)
+**Màn hình:** tab **"Chuyển tiền & Lá chắn AI"** trong khung **"Trợ lý AI hành động thay bạn"**; hộp **"Mẹo nhanh"** ở đầu khu vực.
 
 **Thao tác:**
-1. Chỉ nhanh cột trái: thẻ **"Số dư ví khả dụng"** (15.000.000đ, badge "AI Shield ON"), **"Ngân sách chi tiêu"** 4 danh mục, **"Danh sách cảnh báo (Blacklist)"** 3 mục.
-2. Bấm thẻ **"Kịch bản 1: Giao dịch an toàn"** → ô lệnh tự điền *"Chuyển 45.000đ tiền bún bò cho Quán Cô Ba"*.
-3. Bấm **"Phân tích giao dịch với Lá chắn AI"** (hoặc `Ctrl + Enter`).
-4. Kết quả: badge **"LOW • AN TOÀN"**, **Điểm rủi ro 10/100**, danh mục **Ăn uống**, khung xanh **"Ngân sách trong hạn mức an toàn"** — còn lại 1.755.000đ.
-5. Bấm **"Xác nhận chuyển tiền (45.000đ)"** → toast **"Chuyển tiền thành công 45.000đ"**, số dư còn 14.955.000đ.
+1. Trong khung **"AI Payment Copilot"**, bấm gợi ý **"Chuyển 250.000đ tiền ăn trưa cho Nguyễn Minh"**.
+2. Copilot trả lời và hiện 3 thẻ đã bóc tách: **Số tiền 250.000đ · Người nhận Nguyễn Minh · Danh mục Ăn uống**; form **"Chuyển tiền thông minh & Quét Lá chắn AI"** được điền sẵn, viền vàng nhấp nháy.
+3. Bấm **"Phân tích giao dịch với Lá chắn AI"** → badge **"LOW • AN TOÀN"**, khung **"Ngân sách trong hạn mức an toàn"**, thanh luồng AWS ở cuối thẻ kết quả kèm độ trễ thật.
+4. Bấm **"Xác nhận chuyển tiền (250.000đ)"** → toast **"Chuyển tiền thành công 250.000đ"**.
 
 **Câu thoại:**
-> "Tôi gõ lệnh như nhắn tin. AI tự tách số tiền, người nhận, danh mục chi tiêu. Rủi ro 10 trên 100 — **đi thẳng, không một bước xác thực thừa.** Với 99% giao dịch bình thường, TrustPay AI vô hình."
+> "Tôi nói như nhắn tin. Copilot tách số tiền, người nhận, danh mục và điền sẵn lệnh — nhưng **không tự chuyển**: mọi lệnh vẫn đi qua Lá chắn AI trên Amazon Bedrock và bộ luật.
+> Rủi ro thấp, đi thẳng, không một bước xác thực thừa. Với giao dịch bình thường, TrustPay AI vô hình."
 
 ---
 
-### ⏱ 1:30–2:00 — Demo kịch bản 2: Vượt ngân sách
+### ⏱ 1:00–1:30 — Copilot tra hạn mức thật & soát gói trừ tiền ngầm
 
 **Thao tác:**
-1. Bấm **"Kịch bản 2: Vượt ngân sách"** → *"Thanh toán 2.500.000đ mua giày sneaker tại Shop XYZ"*.
-2. Bấm **"Phân tích giao dịch với Lá chắn AI"**.
-3. Kết quả: rủi ro lừa đảo **LOW**, danh mục **Mua sắm**, khung vàng **"Cảnh báo vượt hạn mức ngân sách"** — **Vượt mức: 1.000.000đ**, kèm dòng **"Gợi ý"**.
-4. **Không** bấm xác nhận — chuyển ngay sang kịch bản 3.
+1. Bấm gợi ý **"Kiểm tra hạn mức Mua sắm còn bao nhiêu?"** → Copilot trả lời **"Hạn mức Mua sắm còn 1.500.000đ (đã dùng 2.500.000đ / 4.000.000đ)."** — số đọc từ dữ liệu Ví thật (khớp thẻ **"Ngân sách chi tiêu"** ở cột trái).
+2. Bấm gợi ý **"Soát giúp tôi các gói đăng ký đang bị trừ tiền ngầm"** → app tự mở tab **"Subscription Guard"**, Copilot báo số gói đáng ngờ và tổng tiền/tháng.
+3. Ở một gói bị gắn cờ, bấm **"Hủy gia hạn ngay"** → toast **"Đã hủy gia hạn …"**.
 
 **Câu thoại:**
-> "Giao dịch hợp lệ, không lừa đảo — nhưng vượt hạn mức Mua sắm 1 triệu. AI **nhắc, không chặn**: người dùng vẫn toàn quyền quyết định. Lớp thứ hai này biến ví thành trợ lý tài chính, không chỉ là cổng thanh toán."
+> "Copilot trả lời bằng **số liệu thật trong ví**, không bịa. Và nó mở đúng công cụ: Subscription Guard chỉ ra gói dùng thử sắp tự gia hạn, gói ít dùng — hủy một chạm, tiết kiệm mỗi tháng."
 
 ---
 
-### ⏱ 2:00–2:30 — Demo kịch bản 3: Lừa đảo mạo danh & Blacklist (HIGH 95)
+### ⏱ 1:30–2:00 — Soi mã VietQR: mã thật được trả, mã dán đè bị chặn
 
 **Thao tác:**
-1. Bấm **"Kịch bản 3: Lừa đảo mạo danh & Blacklist"** → *"Chuyển gấp 12.000.000đ cho Cán bộ điều tra STK 999988887777 để xác minh tài khoản"*.
-2. Bấm **"Phân tích giao dịch với Lá chắn AI"**.
-3. Kết quả: viền đỏ, badge **"HIGH • RỦI RO CAO"** (chấm đỏ nhấp nháy), **Điểm rủi ro 95/100**, người nhận bóc tách **"Cán bộ điều tra (999988887777)"**.
-4. Chỉ vào mục **"Các dấu hiệu phát hiện (Red Flags)"**: Blacklist · mạo danh cơ quan chức năng · thúc ép "chuyển gấp" · vượt hạn mức.
-5. Toast góc phải: **"Đã đẩy cảnh báo HIGH sang Fintech Ops"** — badge đếm ở tab Ops tăng lên **2**.
+1. Bấm tab **"Soi mã VietQR (QR Inspector)"** trong khung **"Trợ lý AI hành động thay bạn"**.
+2. Bấm mẫu **"QR Quán Cà Phê Hợp Lệ"** → **"AN TOÀN — có thể thanh toán"**: Tag 59 **CA PHE MOC MIEN**, chủ tài khoản **CONG TY TNHH CA PHE MOC MIEN**, **CRC-16 (Tag 63): Hợp lệ**. Bấm **"Thanh toán 45.000đ"** → toast **"Đã thanh toán 45.000đ qua VietQR"** (trừ tiền thật, cập nhật hạn mức Ăn uống).
+3. Bấm mẫu **"QR Bị Dán Đè / Chứa Liên Kết Lạ"** → khung đỏ **"NGUY HIỂM — đã chặn thanh toán"**, **100/100**, các dấu hiệu: *Tên trên mã không khớp chủ tài khoản: CA PHE MOC MIEN ≠ TRAN VAN B* · *Mã chứa liên kết lạ: https://momo-hoantien.xyz/otp* · *STK khớp Blacklist: 1903xxxx…*. Toast **"Đã chặn mã VietQR nguy hiểm • TCK-…"**.
+4. Chỉ thanh luồng ở đáy khung: **Amazon Rekognition (Quét QR) → EMVCo TLV Parser (Giải mã) → Amazon Bedrock & Blacklist (Đối chiếu)**, có độ trễ từng chặng.
 
 **Câu thoại:**
-> "Đây là cuộc gọi lúc mở đầu. 95 trên 100. AI gọi đúng tên chiêu lừa: **mạo danh cơ quan công an**, số tài khoản đã nằm trong danh sách đen, ngôn từ thúc ép.
-> Và hãy nhìn góc phải: cảnh báo **đã sang đội vận hành** trong cùng giây đó."
+> "Chiêu dán mã QR giả đè lên mã của quán quen: tên quán vẫn đúng, nhưng tiền chảy vào tài khoản kẻ gian. TrustPay AI giải mã chuẩn **EMVCo/NAPAS ngay trên máy**, kiểm tra CRC, đối chiếu tên chủ tài khoản, bắt liên kết lạ và Blacklist sống — mã giả bị chặn, ticket tự sang Ops."
+
+**Nói rõ nếu bị hỏi:** tra cứu tên chủ tài khoản NAPAS đang **mô phỏng** cho 2 tài khoản demo; đọc QR từ ảnh dùng BarcodeDetector của trình duyệt (Production: Amazon Rekognition/Lambda phía máy chủ).
 
 ---
 
-### ⏱ 2:30–3:00 — Xác thực khuôn mặt bắt buộc → Hủy giao dịch
+### ⏱ 2:00–2:30 — Active Call Shield: chuyển tiền khi đang nghe máy
 
 **Thao tác:**
-1. Bấm nút đỏ **"Cảnh báo rủi ro cao — Xác thực khuôn mặt trước khi chuyển"** → mở modal **"Xác thực Sinh trắc học Khuôn mặt"**, khung đỏ *"Giao dịch đang bị tạm khóa do phát hiện rủi ro cao (95/100)"*.
-2. Bấm **"Dùng ảnh khuôn mặt Demo"** (không dùng webcam thật trên sân khấu) → lớp phủ *"Đang đối chiếu sinh trắc học… Amazon Rekognition CompareFaces"* → **"Xác thực khuôn mặt thành công"**, **Độ khớp 98.4%**.
-3. Bấm **"Hủy giao dịch"** → toast **"Giao dịch đã được hủy an toàn"**; số dư giữ nguyên 14.955.000đ.
+1. Bấm tab **"Chuyển tiền & Lá chắn AI"**. Ở đầu khung chuyển tiền, dòng **"Trạng thái cuộc gọi: Bình thường"** → bấm **"Mô phỏng cuộc gọi lạ"**.
+2. Dòng đổi thành **"Đang nghe cuộc gọi từ số lạ (+84 9xx xxx 247)"**, biểu tượng đỏ nhấp nháy; khung **"Phụ đề trực tiếp — Amazon Transcribe (mô phỏng streaming)"** chạy từng câu, tô đỏ từ khóa *cán bộ điều tra, phong tỏa, chuyển gấp, tài khoản an toàn, mã OTP*; **"Mức nghi vấn cuộc gọi"** tăng dần.
+3. Trong ô Copilot, gõ **Chuyển 12.000.000đ cho Nguyễn Văn Hùng** → Enter (lệnh "sạch", không có từ khóa lừa đảo).
+4. Bấm **"Phân tích giao dịch với Lá chắn AI"** → toast **"Phát hiện chuyển tiền khi đang nghe máy"**; badge **"FROZEN"**; thẻ **"Cơ chế Hạ nhiệt tâm lý — Vui lòng bình tĩnh kiểm tra lại"** bật lên ở **góc phải dưới** (điện thoại: bottom sheet), nhãn **"FROZEN • Đang tạm giữ"**, đồng hồ 15 giây.
 
 **Câu thoại:**
-> "Nút chuyển tiền đã bị khóa. Theo Quyết định 2345 và Thông tư 50 của NHNN, giao dịch rủi ro cao hoặc trên 10 triệu phải qua **xác thực khuôn mặt** — Amazon Rekognition đối chiếu sinh trắc học.
-> Nhưng điều quan trọng nhất: sau khi đọc cảnh báo, người dùng **tự chọn Hủy**. Tiền vẫn nằm trong ví."
-
-**Nói rõ nếu bị hỏi:** thông báo có chữ *"Demo Mode"* vì máy demo không có ảnh eKYC tham chiếu; bản Production so khớp với ảnh eKYC và **fail-closed** khi không xác thực được (xem `infra/lambda/verify-face.ts`).
+> "Lệnh này hoàn toàn 'sạch' — không có chữ công an, không có tài khoản đen. Nhưng nó được tạo **trong lúc nạn nhân đang nghe một số lạ** đọc từng câu thúc ép.
+> Active Call Shield nâng rủi ro lên CAO, tạm giữ giao dịch 15 giây và **khóa FaceID cho tới khi hết thời gian hạ nhiệt**. Âm thanh không được lưu — chỉ phân tích từ khóa trong RAM theo Nghị định 13."
 
 ---
 
-### ⏱ 3:00–3:30 — Fintech Ops chặn & cập nhật Blacklist (vòng khép kín)
+### ⏱ 2:30–3:00 — Người giám hộ chặn & biên bản bảo vệ
 
 **Thao tác:**
-1. Bấm tab **"Fintech Future Workspace (Ops)"** (badge **2**).
-2. Chỉ 3 thẻ KPI: **"Cảnh báo chờ xử lý (PENDING)"**, **"Giao dịch đã chặn (BLOCKED)"**, **"Tổng tiền rủi ro đã bảo vệ"**.
-3. Ở ticket mới nhất (12.000.000đ, HIGH 95, có **"Tóm tắt phân tích từ Lá chắn AI"**), bấm **"Chặn & Thêm vào Blacklist"**.
-4. Toast **"Đã chặn giao dịch & cập nhật Blacklist"**; KPI **"Tổng tiền rủi ro đã bảo vệ"** → **12.000.000đ**.
-5. Quay lại tab **"Ví Người Dùng & Lá Chắn AI"**: mục **"Danh sách cảnh báo (Blacklist)"** tăng từ 3 lên **4**, đối tượng mới nằm trên cùng.
+1. Trong thẻ Hạ nhiệt, bấm **"Gửi cảnh báo cho Người giám hộ duyệt"** → nút đổi thành **"Đã gửi tới Nguyễn Văn A"**.
+2. Bên phải, **"📱 Điện thoại Người giám hộ: Nguyễn Văn A"** nhận thông báo **"Cảnh báo giao dịch rủi ro cao"** với tóm tắt AI đã che PII.
+3. Bấm **"Chặn & Hủy giao dịch ngay"** trên điện thoại → **"Đã bảo vệ thành công!"**, số dư giữ nguyên.
+4. Bấm **"Tải biên bản (.txt)"** → tệp biên bản bảo vệ giao dịch (chỉ chứa dữ liệu đã che + mã băm SHA-256 của lệnh).
+5. Bấm **"Đóng"** trên thẻ Hạ nhiệt, rồi bấm **"Kết thúc cuộc gọi"** trên thanh Call Shield.
 
 **Câu thoại:**
-> "Chuyên viên rủi ro nhận ticket đã được AI tóm tắt sẵn: số tiền, điểm rủi ro, khuyến nghị xử lý. Một cú bấm: chặn và đưa vào danh sách đen.
-> Quay lại ví — danh sách đen đã cập nhật. **Người dùng phát hiện, AI chấm điểm, Ops xử lý, Blacklist mạnh lên**: lần sau kẻ gian bị chặn ngay từ lớp đầu."
+> "15 giây đủ để người thân lên tiếng. Người giám hộ nhận cảnh báo do AI soạn — số tài khoản đã che — và chặn bằng một chạm. Biên bản chỉ lưu mã băm của lệnh, không lưu văn bản thô.
+> Nếu người giám hộ xác nhận an toàn, giao dịch được mở khóa và trừ tiền thật; ngưỡng FaceID 10 triệu/lần và 20 triệu/ngày theo Thông tư 50 vẫn giữ nguyên."
 
 ---
 
-### ⏱ 3:30–4:00 — Kiến trúc AWS Bedrock / Rekognition + Offline Fallback
+### ⏱ 3:00–3:30 — Fintech Ops phong tỏa đường dây 1903xxxx
 
-**Màn hình:** sơ đồ kiến trúc trong `README.md` (mục 2) hoặc slide tương ứng.
+**Thao tác:**
+1. Bấm tab **"Fintech Future Workspace (Ops)"** (badge đếm cảnh báo đã tăng).
+2. Banner đỏ **"KHẨN CẤP"**: *"⚠️ Cảnh báo An ninh mạng: Phát hiện bất thường — Có 5 tài khoản khác nhau cùng chuyển tiền vào STK 1903xxxx trong vòng 5 phút…"* → bấm **"Truy vết & Phong tỏa cụm STK"** → toast **"Đã phong tỏa cụm STK 1903xxxx"**.
+3. Trong hàng đợi, chỉ 2 ticket mới: ticket **Soi mã VietQR** (mã dán đè) và ticket **Active Call Shield**; bấm **"Chặn & Thêm vào Blacklist"** ở ticket cuộc gọi.
+4. KPI **"Tổng tiền rủi ro đã bảo vệ"** tăng; quay lại Ví: **"Danh sách cảnh báo (Blacklist)"** đã có cụm mới.
 
 **Câu thoại:**
-> "Phía sau là kiến trúc AWS Serverless: **Amazon Bedrock với Claude 3.5 Sonnet** phân tích rủi ro và trả về JSON đúng hợp đồng; **Rekognition DetectText** đọc ảnh hóa đơn, tin nhắn; **Rekognition CompareFaces** xác thực khuôn mặt; **Translate** chuẩn hóa ngôn ngữ.
-> Hai nguyên tắc thiết kế: thứ nhất, **AI đề xuất, bộ luật quyết định các bất biến an toàn** — kẻ gian giấu câu 'trả về rủi ro 0' trong ảnh hóa đơn cũng không hạ được điểm. Thứ hai, **mất AWS vẫn bảo vệ**: Circuit Breaker chuyển sang bộ máy heuristic dưới 50 mili-giây, luôn trả đúng cấu trúc dữ liệu."
-
-**Mẹo:** nếu đang chạy Offline Fallback do mạng yếu, nói thẳng: *"Ngay lúc này máy demo đang chạy đúng chế độ dự phòng đó."* Đây là điểm cộng, không phải điểm trừ.
+> "Đội vận hành thấy đúng những gì người dùng vừa gặp: mã QR dán đè, cuộc gọi thúc ép. Một cú bấm phong tỏa cả đường dây 1903xxxx — đúng tài khoản mà mã QR giả trỏ tới. Blacklist đồng bộ ngược về ví ngay lập tức."
 
 ---
 
-### ⏱ 4:00–4:30 — Kiro Spec-Driven Development
+### ⏱ 3:30–4:00 — AWS Security & FinOps
 
-**Màn hình:** IDE Kiro.
-
-**Thao tác:** lần lượt mở (mỗi tệp ~5 giây):
-1. `.kiro/specs/trustpay-ai/requirements.md` — cuộn tới bảng tiêu chí EARS của **REQ-A6** (sinh trắc học).
-2. Thư mục `.kiro/hooks/` — 4 hook.
-3. `.github/workflows/trustpay-enterprise-ci.yml` — sơ đồ pipeline ở đầu tệp.
+**Thao tác:**
+1. Ở tab Ops, bấm **"AWS Security & FinOps"** (hoặc nút **"FinOps"** trên header).
+2. Khối **"Live PII Masking Preview"**: bên trái **"Dữ liệu gốc (chỉ tồn tại trong RAM)"**, bên phải **"Dữ liệu gửi Amazon Bedrock (đã che)"**: `STK 19*****999`, `SĐT 090***888`, `CCCD 079******234`, số tiền **12.000.000đ giữ nguyên**; dòng *"Che phía máy chủ … • khứ hồi …"* là độ trễ đo thật; *"Lệnh gốc chỉ lưu dạng băm SHA-256"*.
+3. Khối **"Resilience — Circuit Breaker"**: 3 dịch vụ Bedrock / Rekognition / Translate hiển thị **"Circuit Breaker: CLOSED (Healthy)"**, ngân sách ≤ 4000 / 2500 / 1500 ms; dòng **"Phân tích gần nhất"** ghi engine và độ trễ thật của lệnh vừa phân tích.
+4. Khối **"Unit Economics"**: **~$0.0012** mỗi giao dịch (≈ 31 VNĐ), **"Giảm 78% chi phí"** so với baseline Sonnet-only $0.0056.
 
 **Câu thoại:**
-> "Chúng tôi xây TrustPay AI theo **Spec-Driven Development** với Kiro: yêu cầu viết chuẩn EARS, ánh xạ thẳng tới điều khoản pháp lý; thiết kế có sơ đồ kiến trúc và state machine; công việc chia thành WBS.
-> Bốn **Kiro Hooks** tự động canh gác: kiểm tra kiểu mỗi lần lưu, đồng bộ hợp đồng API, **chặn lộ khóa AWS và dữ liệu CCCD**, cảnh báo khi ai đó sửa ngưỡng pháp lý 10 triệu / 20 triệu.
-> 35 kịch bản tấn công lừa đảo và prompt injection chạy trong CI trên mỗi Pull Request."
+> "Ba cam kết kỹ thuật, nhìn được tận mắt. Một: **dữ liệu cá nhân được che trước khi rời biên tin cậy sang Bedrock** — đúng hàm máy chủ đang dùng, theo Nghị định 13. Hai: mỗi dịch vụ AWS có **Circuit Breaker và ngân sách thời gian**; khi mạch mở, hệ thống chuyển sang bộ luật dưới 50 mili-giây, vẫn trả đúng cấu trúc dữ liệu. Ba: định tuyến theo giá trị, phân tầng Haiku/Sonnet, Prompt Caching — **khoảng 0,0012 đô mỗi giao dịch**."
+
+**Nếu đang chạy Offline:** dòng **"Phân tích gần nhất"** ghi *"Offline Heuristic (< 50 ms) • Độ trễ thực đo: … • chưa cấu hình AWS credentials (chế độ demo)"* — nói thẳng: *"Ngay lúc này máy demo đang chạy đúng chế độ dự phòng đó."*
 
 ---
 
-### ⏱ 4:30–5:00 — Kinh tế học đơn vị & Kết luận
+### ⏱ 4:00–4:30 — Light/Dark, mobile-first, Hướng dẫn sử dụng, Kiro
 
-**Màn hình:** slide kết (logo TrustPay AI + 3 con số).
+**Thao tác:**
+1. Đóng bảng FinOps. Trên header bấm **"🌙 Dark"** rồi **"☀️ Light"** — toàn bộ thẻ, form, modal đổi theme, không chói, không mất chữ.
+2. Chuyển sang cửa sổ DevTools **390 px**: thanh phân hệ và thanh trợ lý cuộn ngang, nút cao tối thiểu 44 px, thẻ Hạ nhiệt hiển thị dạng **bottom sheet**.
+3. Bấm **"📖 Hướng dẫn sử dụng"** → modal **"📖 Hướng dẫn sử dụng TrustPay AI"** với 5 chủ đề: *Chuyển tiền & Trợ lý AI Copilot · Quét & Soi mã VietQR an toàn · Trợ lý Mua sắm & Soát gói đăng ký · Lá chắn cuộc gọi lạ & Người giám hộ · Trung tâm Vận hành Ops*. Bấm **"Dùng thử ngay"** ở chủ đề *Quét & Soi mã VietQR an toàn* → app nhảy thẳng tới khung soi mã.
+4. (Nếu còn thời gian) mở `tests/fraud-adversarial-suite.ts` ở F21–F25.
 
 **Câu thoại:**
-> "Theo mô hình giả định trong hồ sơ FinOps, chi phí AWS khoảng **130 đồng cho mỗi giao dịch** được AI soát vé. Chặn được **một** vụ lừa 8 triệu đủ trả chi phí AI cho **khoảng 60.000 giao dịch**.
-> TrustPay AI: **chặn rủi ro trước khi tiền rời ví, chỉ làm phiền đúng giao dịch nguy hiểm, và để người dùng cùng đội vận hành nhìn thấy cùng một sự thật.**
+> "Người dùng thật cầm điện thoại 6 inch, dùng cả ngày lẫn đêm: giao diện mobile-first, sáng/tối, và một **Hướng dẫn sử dụng 5 chủ đề** với nút 'Dùng thử ngay' cho người mới. Mẹo nhanh ở đầu mỗi khu vực, tắt được.
+> Chúng tôi xây theo **Spec-Driven Development với Kiro**: 25 kịch bản lừa đảo và 20 kịch bản prompt injection chạy trong CI — kể cả kiểm thử CRC của VietQR, Call Shield chỉ được *nâng* rủi ro, và che PII trước Bedrock."
+
+---
+
+### ⏱ 4:30–5:00 — Kết luận & lời kêu gọi
+
+**Màn hình:** slide kết (logo TrustPay AI + 3 con số: **~$0.0012/GD**, **15 giây hạ nhiệt**, **< 50 ms dự phòng**).
+
+**Câu thoại:**
+> "Theo mô hình giả định trong hồ sơ FinOps, chi phí AI khoảng **31 đồng mỗi giao dịch**. Chặn được **một** vụ lừa 8 triệu đủ trả chi phí AI cho **khoảng 260.000 giao dịch**.
+> TrustPay AI: **chặn rủi ro trước khi tiền rời ví — kể cả khi kẻ gian đang ở đầu dây bên kia hay dán mã QR giả trước mặt bạn — và để người dùng, người thân, đội vận hành cùng nhìn một sự thật.**
 > Chúng tôi sẵn sàng đưa Lá Chắn AI vào luồng chuyển tiền P2P và thanh toán QR của MoMo. Xin cảm ơn!"
 
 **Mẹo:** dừng đúng 5:00. Câu cuối nói chậm, nhìn giám khảo.
@@ -187,13 +188,15 @@
 
 | Tình huống | Dấu hiệu | Xử lý ngay | Câu thoại cứu nguy |
 |---|---|---|---|
-| **Mạng hội trường yếu / mất** | Panel "Lá chắn AI đang quét giao dịch…" quay quá 3 giây | Driver tắt server, đổi tên `.env.local` → `.env.local.bak`, chạy lại `npm run start` (≈ 10 giây). API phát hiện thiếu credentials và chạy **Offline Fallback** tức thì | *"Mạng hội trường vừa cho chúng tôi cơ hội minh họa tính năng quan trọng nhất: hệ thống vẫn bảo vệ người dùng khi mất kết nối AWS."* |
-| Phân tích chậm do AWS (không phải do mạng) | Có mạng nhưng phản hồi > 5 giây | Như trên: chuyển sang Offline Fallback cho phần còn lại của buổi demo | *"Trong Production, Circuit Breaker tự làm việc này dưới 50 mili-giây."* |
-| Trình duyệt hỏi quyền camera | Popup quyền truy cập | Không bấm **"Bật Webcam thật"**; luôn dùng **"Dùng ảnh khuôn mặt Demo"** | — |
-| Lỡ bấm **"Xác nhận chuyển tiền"** ở kịch bản 3 | Số dư giảm 12.000.000đ | Không giải thích dài: bấm **"Reset dữ liệu Demo"**, làm lại kịch bản 3 (≈ 20 giây) | *"Đây chính là lý do người dùng cần một lớp bảo vệ trước nút bấm."* |
-| Máy chiếu cắt mép, chữ nhỏ | Không đọc được điểm rủi ro | `Ctrl` + `+` để zoom; giao diện tự co giãn | — |
-| Laptop treo / hết pin | Màn hình đen | Chuyển sang video dự phòng trên thiết bị thứ hai, Presenter tiếp tục nói theo timeline | *"Chúng tôi chuyển sang bản ghi hình cùng kịch bản."* |
-| Trễ giờ | Đồng hồ quá 3:30 khi còn ở Tab Ops | Gộp mốc 3:30–4:30 thành 1 câu: *"Kiến trúc AWS Serverless, Offline Fallback dưới 50 ms, xây bằng Kiro Spec-Driven với 35 kịch bản tấn công trong CI"*, rồi vào kết luận | — |
+| **Mạng hội trường yếu / mất** | Nút **"Lá chắn AI đang phân tích rủi ro..."** quay quá 3 giây | Driver tắt server, đổi tên `.env.local` → `.env.local.bak`, chạy lại `npm run start` (≈ 10 giây) → Offline Heuristic tức thì | *"Mạng hội trường vừa cho chúng tôi cơ hội minh họa tính năng quan trọng nhất: hệ thống vẫn bảo vệ người dùng khi mất kết nối AWS."* |
+| AWS chậm / lỗi lặp lại | Bảng FinOps hiện **"OPEN (đang chạy Offline Heuristic)"** | Không cần làm gì: mạch OPEN tự đi thẳng bộ luật; sau 30 giây tự thử lại (HALF-OPEN) | *"Đây chính là Circuit Breaker đang làm việc."* |
+| Quên kết thúc cuộc gọi mô phỏng | Mọi lệnh chuyển sau đó đều bị tạm giữ | Bấm **"Kết thúc cuộc gọi"** trên thanh Call Shield | *"Đúng thiết kế: còn nghe máy là còn tạm giữ."* |
+| Ảnh QR không đọc được | Thông báo *"Trình duyệt này chưa hỗ trợ đọc QR từ ảnh…"* | Dùng 2 nút mẫu hoặc dán chuỗi QR vào ô **"Chuỗi mã QR (EMVCo)"** | — |
+| Trình duyệt hỏi quyền camera | Popup quyền truy cập | Không bấm **"Dùng Webcam thật"** / **"Bật Webcam thật"**; luôn dùng **"Xác thực FaceID (ảnh Demo) & mở khóa"** hoặc **"Dùng ảnh khuôn mặt Demo"** | — |
+| Lỡ cho phép giao dịch rủi ro | Số dư giảm | Bấm **"Reset Demo"** 2 lần, làm lại mốc 2:00 (≈ 25 giây) | *"Đây chính là lý do người dùng cần một lớp bảo vệ trước nút bấm."* |
+| Máy chiếu Dark mode khó đọc | Chữ nhạt | Bấm **"☀️ Light"** | — |
+| Laptop treo / hết pin | Màn hình đen | Chuyển sang video dự phòng, Presenter tiếp tục nói theo timeline | *"Chúng tôi chuyển sang bản ghi hình cùng kịch bản."* |
+| Trễ giờ | Quá 3:30 khi còn ở tab Ops | Bỏ mốc 4:00–4:30, chỉ nói 1 câu: *"Giao diện mobile-first, sáng/tối, hướng dẫn 5 chủ đề, 45 kịch bản kiểm thử trong CI"*, rồi vào kết luận | — |
 
 **Quy tắc vàng:** không bao giờ để khoảng lặng quá 3 giây. Driver xử lý kỹ thuật, Presenter tiếp tục nói.
 
@@ -204,24 +207,34 @@
 | Mốc | Nội dung |
 |---|---|
 | 0:00–0:30 | Hook mở đầu |
-| 0:30–1:30 | Kịch bản 3 (HIGH 95) → modal sinh trắc học → **"Hủy giao dịch"** |
-| 1:30–2:15 | Tab Ops → **"Chặn & Thêm vào Blacklist"** → Blacklist cập nhật ở Tab 1 |
-| 2:15–3:00 | Kiến trúc + Offline Fallback + chi phí ~130 đồng/giao dịch + kết luận |
+| 0:30–1:15 | **"Mô phỏng cuộc gọi lạ"** → Copilot gõ *Chuyển 12.000.000đ cho Nguyễn Văn Hùng* → **FROZEN** → **"Gửi cảnh báo cho Người giám hộ duyệt"** → **"Chặn & Hủy giao dịch ngay"** |
+| 1:15–1:45 | **"Soi mã VietQR (QR Inspector)"** → mẫu **"QR Bị Dán Đè / Chứa Liên Kết Lạ"** bị chặn |
+| 1:45–2:15 | Ops → **"Truy vết & Phong tỏa cụm STK"** |
+| 2:15–3:00 | **"AWS Security & FinOps"** (che PII, CLOSED, ~$0.0012/GD) + kết luận |
 
 ---
 
 ## 5. Cầu nối sang phần Hỏi đáp
 
-Khi giám khảo hỏi sâu, trả lời ngắn rồi dẫn chiếu tài liệu:
+Khi giám khảo hỏi sâu, trả lời ngắn rồi dẫn chiếu tài liệu / mã nguồn:
 
-| Chủ đề câu hỏi | Tài liệu |
+| Chủ đề câu hỏi | Tài liệu / mã nguồn |
 |---|---|
+| VietQR / EMVCo, CRC-16, mã dán đè | `lib/qr/emvco.ts`, `lib/qr/vietqr-inspector.ts`, kiểm thử F21–F22 |
+| Active Call Shield, Amazon Transcribe | `lib/call-shield/call-shield.ts`, kiểm thử F24 (chỉ nâng rủi ro, ADR-1) |
+| AI Payment Copilot | `lib/copilot/payment-copilot.ts`, kiểm thử F23 |
+| Che PII trước Bedrock (NĐ 13/2023) | `lib/security/prompt-redaction.ts`, `app/api/analyze/route.ts`, `app/api/pii-preview/route.ts`, kiểm thử F25 |
+| Circuit Breaker & ngân sách thời gian | `lib/aws/service-breakers.ts`, `lib/resilience/circuit-breaker.ts`, `architecture/disaster-recovery-runbook.md` |
+| Chi phí, ROI | `pitch-prep/unit-economics-finops.md` (mục 1.3 baseline, 1.4 FinOps), `lib/finops/unit-economics.ts` |
 | Prompt injection, deepfake, replay | `architecture/threat-modeling-stride-atlas.md` |
-| Bedrock sập / throttling | `architecture/disaster-recovery-runbook.md` |
 | Ngưỡng 10 triệu / 20 triệu, thiết bị tin cậy | `compliance/nhnn-circular-50-decision-2345-matrix.md` |
 | CCCD, sinh trắc học, lưu trú dữ liệu | `compliance/decree-13-dpia-report.md` |
-| Chi phí, ROI | `pitch-prep/unit-economics-finops.md` |
 | Tích hợp vào SuperApp MoMo | `pitch-prep/momo-superapp-sdk-integration.md` |
 | 25 câu hỏi CTO/CISO đã chuẩn bị | `pitch-prep/cto-ciso-deep-dive-qa.md` |
 
-**Câu trả lời trung thực cho câu hỏi khó:** nếu giám khảo chỉ ra một khoảng trống (ví dụ route hiện chưa bắt sinh trắc học cho giao dịch rủi ro thấp trên 10 triệu), xác nhận thẳng thắn và dẫn tới task khắc phục đã lên kế hoạch trong `.kiro/specs/trustpay-ai/tasks.md` (T-2.1). Bộ kiểm thử đã đánh dấu sẵn các khoảng trống này là `KNOWN-GAP`.
+**Trả lời trung thực những điểm đang mô phỏng:**
+- Phụ đề cuộc gọi là **kịch bản phát lại theo thời gian** mô phỏng Amazon Transcribe Streaming; bản demo không thu âm.
+- Tra cứu tên chủ tài khoản NAPAS là **mô phỏng** cho 2 tài khoản demo; Production gọi API ngân hàng/NAPAS phía máy chủ.
+- Copilot hiểu ý định bằng bộ luật chạy trên trình duyệt; lệnh chuyển tiền vẫn đi qua Lá chắn AI (Bedrock + bộ luật).
+- Đơn giá AWS là **giả định mẫu**; con số ~$0.0012/GD là kịch bản FinOps mục 1.4, baseline hiện tại ≈ $0.0056/GD. Trong mã hiện tại, đòn bẩy "chỉ dịch văn bản không phải tiếng Việt" đã chạy thật; định tuyến 40% và phân tầng Haiku/Sonnet là mục tiêu triển khai.
+- Nếu giám khảo chỉ ra một khoảng trống khác, xác nhận thẳng thắn và dẫn tới task khắc phục trong `.kiro/specs/trustpay-ai/tasks.md`; bộ kiểm thử đánh dấu sẵn các khoảng trống là `KNOWN-GAP`.

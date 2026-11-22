@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Gauge } from "lucide-react";
 import type {
   AwsPipelineTrace,
   BudgetReallocationPlan,
@@ -73,6 +74,17 @@ import BiometricModal from "@/components/BiometricModal";
 import FraudOpsDashboard from "@/components/fintech-ops/FraudOpsDashboard";
 import WelcomeOnboarding, { type OnboardingRole } from "@/components/onboarding/WelcomeOnboarding";
 import QuickTour, { type TourStepIndex } from "@/components/onboarding/QuickTour";
+import { markGuideSeen } from "@/lib/preferences/preferences-store";
+import { endCallShield, featureStore, startCallShield } from "@/lib/features/feature-store";
+import { applyCallShieldUplift, assessCallRisk, captionsRevealed } from "@/lib/call-shield/call-shield";
+import { buildQrOpsTicket, QR_DATA_TEXT, qrRecipientLabel } from "@/lib/qr/vietqr-inspector";
+import ThemeController from "@/components/theme/ThemeController";
+import QuickTip from "@/components/guide/QuickTip";
+import UserGuideModal, { type GuideTopicIndex } from "@/components/guide/UserGuideModal";
+import PaymentCopilot from "@/components/user-wallet/PaymentCopilot";
+import CallShieldBar from "@/components/user-wallet/CallShieldBar";
+import QrInspector, { type QrCheckResult } from "@/components/user-wallet/QrInspector";
+import SecurityFinOpsPanel from "@/components/finops/SecurityFinOpsPanel";
 
 /** Ghi chú dữ liệu (lưu bằng tiếng Việt — lớp hiển thị tự dịch khi chọn EN). */
 const HOLD_NOTE = "Đang tạm giữ — chờ Hạ nhiệt 15 giây, FaceID hoặc Người giám hộ duyệt";
@@ -104,7 +116,8 @@ interface TransferSession {
 
 type BiometricRequest =
   | { flow: "transfer"; amount: number; recipient: string; riskScore: number; reasons: string[] }
-  | { flow: "shopping"; checkId: string; amount: number; recipient: string; riskScore: number; reasons: string[] };
+  | { flow: "shopping"; checkId: string; amount: number; recipient: string; riskScore: number; reasons: string[] }
+  | { flow: "qr"; checkId: string; amount: number; recipient: string; riskScore: number; reasons: string[] };
 
 type TourProgress = readonly [boolean, boolean, boolean];
 
@@ -173,6 +186,10 @@ export default function TrustPayApp() {
   const [highlightTarget, setHighlightTarget] = useState<string | null>(null);
   const [tourDone, setTourDone] = useState<TourProgress>([false, false, false]);
   const [resetKey, setResetKey] = useState(0);
+  const [guideTopic, setGuideTopic] = useState<GuideTopicIndex | null>(null);
+  const [finopsOpen, setFinopsOpen] = useState(false);
+  const [qrVerifiedCheckId, setQrVerifiedCheckId] = useState<string | null>(null);
+  const [lastTrace, setLastTrace] = useState<AwsPipelineTrace | null>(null);
 
   const toastTimerRef = useRef<number | null>(null);
   const highlightTimerRef = useRef<number | null>(null);
@@ -235,12 +252,23 @@ export default function TrustPayApp() {
     setIsAnalyzing(value);
   };
 
-  const handleAnalysisComplete = (result: TransactionAnalysisResponse, meta: TransactionAnalysisMeta) => {
+  const handleAnalysisComplete = (rawResult: TransactionAnalysisResponse, meta: TransactionAnalysisMeta) => {
     if (analysisEpochRef.current !== resetEpochRef.current) {
       return; // Kết quả của phiên trước khi Reset Demo.
     }
 
     const nowMs = Date.now();
+    // Active Call Shield: lệnh tạo ra khi đang nghe cuộc gọi lạ → chỉ NÂNG rủi ro (ADR-1),
+    // sàn 82/100 vượt ngưỡng tạm giữ 70 → Hạ nhiệt 15 giây + Người giám hộ duyệt.
+    const call = featureStore.getSnapshot().callShield;
+    const callStartedMs = call.active && call.startedAt ? Date.parse(call.startedAt) : Number.NaN;
+    const duringCall = Number.isFinite(callStartedMs);
+    const result = duringCall
+      ? applyCallShieldUplift(rawResult, {
+          keywordIds: assessCallRisk(captionsRevealed(nowMs - callStartedMs), "vi").keywordIds,
+        })
+      : rawResult;
+    setLastTrace(meta.trace);
     const snapshot = walletStore.getSnapshot();
     const dailyBefore = computeDailyOutflow(snapshot.transactions, vnDayKey(nowMs));
     const effectiveCategory = resolveWalletCategory(result.category, snapshot.budgets);
@@ -318,7 +346,11 @@ export default function TrustPayApp() {
       setCoolingOpenedAt(nowMs);
       setCoolingOpen(true);
       markTourStep(0);
-      showToast({ type: "warning", title: t.toast.frozenTitle, description: t.toast.frozenDesc });
+      showToast(
+        duringCall
+          ? { type: "warning", title: t.toastExt.callHeld, description: t.toastExt.callHeldDesc }
+          : { type: "warning", title: t.toast.frozenTitle, description: t.toast.frozenDesc },
+      );
     } else if (isRisky) {
       showToast({
         type: "warning",
@@ -402,8 +434,10 @@ export default function TrustPayApp() {
           ? { ...prev, status: "idle", biometricVerified: true }
           : prev,
       );
-    } else {
+    } else if (biometricRequest.flow === "shopping") {
       setShopVerifiedCheckId(biometricRequest.checkId);
+    } else {
+      setQrVerifiedCheckId(biometricRequest.checkId);
     }
     setBiometricRequest(null);
     showToast({
@@ -430,6 +464,8 @@ export default function TrustPayApp() {
   };
 
   const handleCloseCooling = useCallback(() => setCoolingOpen(false), []);
+  const closeGuide = useCallback(() => setGuideTopic(null), []);
+  const closeFinops = useCallback(() => setFinopsOpen(false), []);
 
   const handleSendGuardianAlert = () => {
     if (!transfer || transfer.status !== "frozen" || transfer.guardianSentAt !== null) return;
@@ -785,11 +821,126 @@ export default function TrustPayApp() {
     });
   };
 
+  // ------------------------------------------------- VietQR Inspector
+
+  const handleQrDanger = (check: QrCheckResult): string | null => {
+    const nowMs = Date.now();
+    const ticket = buildQrOpsTicket(check.report, {
+      ticketId: createTicketId(nowMs, vnDatePart(nowMs)),
+      timestamp: nowIso(nowMs),
+      amount: check.amount,
+      riskScore: check.finalScore,
+    });
+    walletStore.setState((state) => upsertTicket(state, ticket));
+    showToast({ type: "warning", title: t.toastExt.qrBlocked(ticket.ticketId), description: t.toastExt.qrBlockedDesc });
+    return ticket.ticketId;
+  };
+
+  const handleQrPay = (check: QrCheckResult): boolean => {
+    const snapshot = walletStore.getSnapshot();
+    if (
+      check.verdict === "DANGER" ||
+      check.amount <= 0 ||
+      check.amount > snapshot.balance ||
+      (check.policy.requireBiometric && qrVerifiedCheckId !== check.id)
+    ) {
+      return false;
+    }
+    const nowMs = Date.now();
+    const recipient = qrRecipientLabel(check.report);
+    const tx: WalletTransaction = {
+      id: createClientId("QRP"),
+      timestamp: nowIso(nowMs),
+      channel: "TRANSFER",
+      recipient,
+      amount: check.amount,
+      category: check.category,
+      riskLevel: check.finalLevel,
+      riskScore: check.finalScore,
+      status: "COMPLETED",
+      note: QR_DATA_TEXT.paidNote,
+    };
+    walletStore.setState((state) => applyDebit(state, tx));
+    showToast({
+      type: "success",
+      title: t.toastExt.qrPaid(money(check.amount)),
+      description: t.toastExt.qrPaidDesc(data(recipient)),
+    });
+    return true;
+  };
+
+  const handleQrRequestBiometric = (check: QrCheckResult) => {
+    setBiometricRequest({
+      flow: "qr",
+      checkId: check.id,
+      amount: check.amount,
+      recipient: qrRecipientLabel(check.report),
+      riskScore: check.finalScore,
+      reasons: check.policy.reasons,
+    });
+  };
+
+  // ------------------------------------------- Copilot & Active Call Shield
+
+  const openAgent = (agent: AgentTab, areaId: string) => {
+    setShowOnboarding(false);
+    setActiveTab("user-wallet");
+    setActiveAgent(agent);
+    focusArea(areaId);
+  };
+
+  const handleCopilotPrefill = (commandText: string) => {
+    setInputSeed((prev) => ({ nonce: prev.nonce + 1, text: commandText, scenarioId: null }));
+    openAgent("transfer", "tp-transfer-panel");
+    showToast({ type: "info", title: t.toastExt.copilotPrefilled, description: t.toastExt.copilotPrefilledDesc });
+  };
+
+  const handleStartCall = () => {
+    if (featureStore.getSnapshot().callShield.active) return;
+    startCallShield(new Date().toISOString());
+    showToast({ type: "warning", title: t.toastExt.callStarted, description: t.toastExt.callStartedDesc });
+  };
+
+  const handleEndCall = () => {
+    if (!featureStore.getSnapshot().callShield.active) return;
+    endCallShield();
+    showToast({ type: "info", title: t.toastExt.callEnded, description: t.toastExt.callEndedDesc });
+  };
+
+  // --------------------------------------------- Hướng dẫn sử dụng & FinOps
+
+  const handleOpenGuide = (topic: GuideTopicIndex = 0) => {
+    setShowOnboarding(false);
+    setGuideTopic(topic);
+    markGuideSeen();
+  };
+
+  const handleGuideTryNow = (topic: GuideTopicIndex) => {
+    setGuideTopic(null);
+    if (topic === 0) {
+      openAgent("transfer", "tp-copilot");
+    } else if (topic === 1) {
+      openAgent("qr", "tp-qr-inspector");
+    } else if (topic === 2) {
+      openAgent("shopping", "tp-agent-shopping");
+    } else if (topic === 3) {
+      handleStartCall();
+      openAgent("transfer", "tp-call-shield");
+    } else {
+      setShowOnboarding(false);
+      setActiveTab("fintech-ops");
+      focusArea("tp-anomaly-banner");
+    }
+  };
+
   // --------------------------------------------- header, onboarding & tour
 
   const handleReset = () => {
     resetEpochRef.current += 1;
     walletStore.reset();
+    featureStore.reset();
+    setQrVerifiedCheckId(null);
+    setLastTrace(null);
     setTransfer(null);
     setIsAnalyzing(false);
     setCoolingOpen(false);
@@ -860,13 +1011,17 @@ export default function TrustPayApp() {
   const isTransferHighlighted = highlightTarget === "tp-transfer-panel";
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
+    <div className="flex min-h-screen flex-col overflow-x-clip bg-slate-50">
+      <ThemeController />
       <AppHeader
         activeTab={activeTab}
         onTabChange={setActiveTab}
         pendingAlertsCount={pendingAlertsCount}
         onOpenOnboarding={() => setShowOnboarding(true)}
         onReset={handleReset}
+        onOpenGuide={() => handleOpenGuide(0)}
+        guideSeen={prefs.guideSeen}
+        onOpenFinOps={() => setFinopsOpen(true)}
       />
 
       <ToastNotice toast={toast} onDismiss={() => setToast(null)} />
@@ -898,7 +1053,25 @@ export default function TrustPayApp() {
             />
 
             <div className={activeAgent === "transfer" ? "flex flex-col gap-6" : "hidden"}>
-              <div id="tp-transfer-panel" className={`rounded-3xl ${isTransferHighlighted ? "tp-highlight" : ""}`}>
+              <QuickTip id="transfer" />
+              <PaymentCopilot
+                budgets={wallet.budgets}
+                subscriptions={wallet.subscriptions}
+                onPrefillTransfer={handleCopilotPrefill}
+                onOpenSubscriptions={() => openAgent("subscriptions", "tp-agent-subscriptions")}
+                onOpenQr={() => openAgent("qr", "tp-qr-inspector")}
+                onOpenCallShield={() => openAgent("transfer", "tp-call-shield")}
+                highlighted={highlightTarget === "tp-copilot"}
+              />
+              <div
+                id="tp-transfer-panel"
+                className={`flex flex-col gap-4 rounded-3xl ${isTransferHighlighted ? "tp-highlight" : ""}`}
+              >
+                <CallShieldBar
+                  onStart={handleStartCall}
+                  onEnd={handleEndCall}
+                  highlighted={highlightTarget === "tp-call-shield"}
+                />
                 <TransactionInputPanel
                   key={`${resetKey}-${inputSeed.nonce}`}
                   budgets={wallet.budgets}
@@ -907,7 +1080,9 @@ export default function TrustPayApp() {
                   onAnalyzingChange={handleAnalyzingChange}
                   initialCommandText={inputSeed.text}
                   initialScenarioId={inputSeed.scenarioId}
-                  highlightScenarioId={isTransferHighlighted ? "scenario-3" : null}
+                  highlightScenarioId={
+                    isTransferHighlighted && inputSeed.scenarioId === "scenario-3" ? "scenario-3" : null
+                  }
                 />
               </div>
 
@@ -934,7 +1109,32 @@ export default function TrustPayApp() {
               />
             </div>
 
-            <div className={activeAgent === "shopping" ? "" : "hidden"}>
+            <div className={activeAgent === "qr" ? "flex flex-col gap-4" : "hidden"}>
+              <QuickTip id="qr" />
+              <div className={`rounded-3xl ${highlightTarget === "tp-qr-inspector" ? "tp-highlight" : ""}`}>
+                <QrInspector
+                  key={`qr-${resetKey}`}
+                  budgets={wallet.budgets}
+                  blacklist={wallet.blacklist}
+                  walletBalance={wallet.balance}
+                  getDailyOutflow={getDailyOutflow}
+                  verifiedCheckId={qrVerifiedCheckId}
+                  onDanger={handleQrDanger}
+                  onPay={handleQrPay}
+                  onRequestBiometric={handleQrRequestBiometric}
+                />
+              </div>
+            </div>
+
+            <div
+              id="tp-agent-shopping"
+              className={
+                activeAgent === "shopping"
+                  ? `flex flex-col gap-4 rounded-3xl ${highlightTarget === "tp-agent-shopping" ? "tp-highlight" : ""}`
+                  : "hidden"
+              }
+            >
+              <QuickTip id="shopping" />
               <SafeShoppingAgent
                 key={`shop-${resetKey}`}
                 budgets={wallet.budgets}
@@ -949,7 +1149,15 @@ export default function TrustPayApp() {
               />
             </div>
 
-            <div className={activeAgent === "subscriptions" ? "" : "hidden"}>
+            <div
+              id="tp-agent-subscriptions"
+              className={
+                activeAgent === "subscriptions"
+                  ? `flex flex-col gap-4 rounded-3xl ${highlightTarget === "tp-agent-subscriptions" ? "tp-highlight" : ""}`
+                  : "hidden"
+              }
+            >
+              <QuickTip id="subscriptions" />
               <SubscriptionGuard
                 key={`sub-${resetKey}`}
                 subscriptions={wallet.subscriptions}
@@ -965,7 +1173,24 @@ export default function TrustPayApp() {
         </section>
 
         {/* Tab 2 — Fintech Future Workspace (Ops) */}
-        <section aria-label={t.header.opsTab} className={activeTab === "fintech-ops" ? "flex flex-1 flex-col" : "hidden"}>
+        <section
+          aria-label={t.header.opsTab}
+          className={activeTab === "fintech-ops" ? "flex min-w-0 flex-1 flex-col gap-4" : "hidden"}
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+            <div className="min-w-0 flex-1">
+              <QuickTip id="ops" />
+            </div>
+            <button
+              type="button"
+              onClick={() => setFinopsOpen(true)}
+              title={t.nav.finopsTitle}
+              className="inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-slate-900 to-[#a50064] px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:brightness-110"
+            >
+              <Gauge className="h-4 w-4" />
+              {t.nav.finops}
+            </button>
+          </div>
           <FraudOpsDashboard
             tickets={ticketsWithEvidence}
             blacklist={wallet.blacklist}
@@ -1022,6 +1247,12 @@ export default function TrustPayApp() {
           onCancelTransaction={handleBiometricCancel}
         />
       )}
+
+      {guideTopic !== null && (
+        <UserGuideModal initialTopic={guideTopic} onClose={closeGuide} onTryNow={handleGuideTryNow} />
+      )}
+
+      {finopsOpen && <SecurityFinOpsPanel onClose={closeFinops} lastTrace={lastTrace ?? transfer?.trace ?? null} />}
 
       {showOnboarding && (
         <WelcomeOnboarding onChooseRole={handleChooseRole} onClose={() => setShowOnboarding(false)} />

@@ -174,12 +174,28 @@ export interface AwsPipelineStep {
   latencyMs: number | null;
 }
 
+/** v1.2: trạng thái Circuit Breaker của một dịch vụ AWS (telemetry qua header). */
+export type AwsCircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+
+/** v1.2: lý do Lá chắn AI chạy Offline Heuristic thay vì Bedrock. */
+export type AwsFallbackReason = 'no-credentials' | 'circuit-open' | 'timeout' | 'aws-error' | 'invalid-json';
+
+export interface AwsBreakerStates {
+  bedrock: AwsCircuitState;
+  rekognition: AwsCircuitState;
+  translate: AwsCircuitState;
+}
+
 export interface AwsPipelineTrace {
   kind: AwsPipelineKind;
   engine: AwsEngineMode;
   /** Độ trễ khứ hồi thực tế đo trên trình duyệt (ms). */
   totalLatencyMs: number;
   steps: AwsPipelineStep[];
+  /** v1.2 (tùy chọn): header `x-trustpay-breaker`. */
+  breakers?: AwsBreakerStates;
+  /** v1.2 (tùy chọn): header `x-trustpay-fallback`. */
+  fallbackReason?: AwsFallbackReason;
 }
 
 export type ShopTargetKind = 'URL' | 'STORE_NAME';

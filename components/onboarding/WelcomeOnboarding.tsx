@@ -48,7 +48,7 @@ export default function WelcomeOnboarding({ onChooseRole, onClose }: WelcomeOnbo
       role="dialog"
       aria-modal="true"
       aria-labelledby="tp-onboarding-title"
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-gradient-to-br from-[#fdf2f8]/95 via-white/95 to-slate-100/95 p-4 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto bg-gradient-to-br from-[#fdf2f8]/95 via-white/95 to-slate-100/95 p-4 backdrop-blur-md"
     >
       <div
         aria-hidden="true"

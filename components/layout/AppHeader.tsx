@@ -10,9 +10,12 @@ import {
   CheckCircle2,
   Compass,
   AlertTriangle,
+  BookOpen,
+  Gauge,
 } from "lucide-react";
 import { useI18n } from "@/components/i18n/I18nProvider";
 import LanguageToggle from "@/components/layout/LanguageToggle";
+import ThemeToggle from "@/components/layout/ThemeToggle";
 
 export type AppTab = "user-wallet" | "fintech-ops";
 
@@ -22,15 +25,28 @@ export interface AppHeaderProps {
   pendingAlertsCount: number;
   onOpenOnboarding: () => void;
   onReset: () => void;
+  /** Mở "📖 Hướng dẫn sử dụng" (luôn hiển thị trên thanh điều hướng). */
+  onOpenGuide?: () => void;
+  /** Đã từng mở hướng dẫn — ẩn chấm "Mới". */
+  guideSeen?: boolean;
+  /** Mở bảng "AWS Security & FinOps". */
+  onOpenFinOps?: () => void;
 }
 
-/** Header cố định: logo, 2 phân hệ, mở lại thẻ chào mừng, Reset Demo và nút VI | EN. */
+/**
+ * Header cố định: logo, 2 phân hệ, Hướng dẫn sử dụng, AWS Security & FinOps,
+ * thẻ chào mừng, Reset Demo, `☀️ Light | 🌙 Dark` và `VI | EN`.
+ * Điện thoại: thanh phân hệ cuộn ngang (snap), mọi nút cao tối thiểu 44px.
+ */
 export default function AppHeader({
   activeTab,
   onTabChange,
   pendingAlertsCount,
   onOpenOnboarding,
   onReset,
+  onOpenGuide,
+  guideSeen = true,
+  onOpenFinOps,
 }: AppHeaderProps) {
   const { t } = useI18n();
   const [resetArmed, setResetArmed] = useState(false);
@@ -65,21 +81,24 @@ export default function AppHeader({
   };
 
   const tabClass = (tab: AppTab) =>
-    `flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-all lg:flex-initial ${
+    `flex min-w-[76%] shrink-0 cursor-pointer snap-start items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-all sm:min-w-0 sm:flex-1 lg:flex-initial ${
       activeTab === tab
         ? "bg-gradient-to-r from-[#a50064] to-[#d82d8b] text-white shadow-sm shadow-[#a50064]/25"
         : "text-slate-600 hover:bg-white/70 hover:text-slate-900"
     }`;
 
+  const ghostButton =
+    "inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-all hover:border-pink-300 hover:bg-pink-50 hover:text-[#a50064]";
+
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 shadow-xs backdrop-blur-md">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
         {/* Trái: Logo */}
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#a50064] to-[#d82d8b] text-white shadow-sm shadow-[#a50064]/25">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#a50064] to-[#d82d8b] text-white shadow-sm shadow-[#a50064]/25">
             <ShieldCheck className="h-6 w-6" strokeWidth={2.2} />
           </div>
-          <div className="flex flex-col">
+          <div className="flex min-w-0 flex-col">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-lg font-bold tracking-tight text-slate-900">
                 TrustPay <span className="text-[#a50064]">AI</span>
@@ -89,14 +108,14 @@ export default function AppHeader({
                 {t.common.awsBadge}
               </span>
             </div>
-            <span className="text-xs text-slate-500">{t.common.demoAccount}</span>
+            <span className="truncate text-xs text-slate-500">{t.common.demoAccount}</span>
           </div>
         </div>
 
-        {/* Giữa: 2 phân hệ */}
+        {/* Giữa: 2 phân hệ (cuộn ngang trên điện thoại) */}
         <nav
           aria-label={t.header.navLabel}
-          className="order-3 flex w-full items-center justify-center gap-1 rounded-2xl bg-slate-100 p-1 lg:order-2 lg:w-auto"
+          className="tp-scroll-x order-3 flex w-full snap-x snap-mandatory items-center gap-1 rounded-2xl bg-slate-100 p-1 lg:order-2 lg:w-auto"
         >
           <button
             type="button"
@@ -131,16 +150,38 @@ export default function AppHeader({
           </button>
         </nav>
 
-        {/* Phải: Giới thiệu, Reset Demo, VI | EN (góc trên bên phải) */}
+        {/* Phải: Hướng dẫn, FinOps, Giới thiệu, Reset Demo, Light/Dark, VI | EN */}
         <div className="order-2 flex flex-wrap items-center justify-end gap-2 lg:order-3">
-          <button
-            type="button"
-            onClick={onOpenOnboarding}
-            title={t.header.welcomeTitle}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-all hover:border-pink-300 hover:bg-pink-50 hover:text-[#a50064]"
-          >
+          {onOpenGuide && (
+            <button
+              type="button"
+              onClick={onOpenGuide}
+              title={t.nav.guideTitle}
+              className="relative inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#a50064] to-[#d82d8b] px-3 py-2 text-xs font-bold text-white shadow-sm shadow-[#a50064]/25 transition-all hover:brightness-110"
+            >
+              <BookOpen className="h-4 w-4 shrink-0" />
+              <span className="whitespace-nowrap">{t.nav.guide}</span>
+              {!guideSeen && (
+                <span className="absolute -top-1.5 -right-1.5 inline-flex items-center rounded-full bg-amber-400 px-1.5 py-0.5 text-[9px] font-extrabold tracking-wide text-slate-900 uppercase shadow-sm">
+                  {t.nav.guideNew}
+                </span>
+              )}
+            </button>
+          )}
+
+          {onOpenFinOps && (
+            <button type="button" onClick={onOpenFinOps} title={t.nav.finopsTitle} className={ghostButton}>
+              <Gauge className="h-4 w-4 shrink-0" />
+              <span className="hidden 2xl:inline">{t.nav.finops}</span>
+              <span className="hidden sm:inline 2xl:hidden">{t.nav.finopsShort}</span>
+              <span className="sr-only sm:hidden">{t.nav.finops}</span>
+            </button>
+          )}
+
+          <button type="button" onClick={onOpenOnboarding} title={t.header.welcomeTitle} className={ghostButton}>
             <Compass className="h-4 w-4" />
             <span className="hidden md:inline">{t.header.welcome}</span>
+            <span className="sr-only md:hidden">{t.header.welcome}</span>
           </button>
 
           <button
@@ -174,6 +215,7 @@ export default function AppHeader({
             )}
           </button>
 
+          <ThemeToggle />
           <LanguageToggle />
         </div>
       </div>

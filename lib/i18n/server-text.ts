@@ -1,4 +1,5 @@
 import type { AppLanguage, CategoryName } from "@/types/trustpay";
+import { EXACT_EN_EXT } from "@/lib/i18n/data-text-ext";
 
 /**
  * Dịch sang tiếng Anh các chuỗi DỮ LIỆU do bộ luật (Smart Fallback Engine),
@@ -33,6 +34,8 @@ function localizeNumbersEn(text: string): string {
 }
 
 const EXACT_EN: Record<string, string> = {
+  // Vòng 2: VietQR Inspector & Active Call Shield
+  ...EXACT_EN_EXT,
   // scamType
   "Giao dịch tiêu dùng thông thường": "Regular consumer transaction",
   "Lừa đảo mạo danh Cơ quan Công an / Cán bộ điều tra": "Police / investigator impersonation scam",

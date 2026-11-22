@@ -62,7 +62,7 @@ export default function GuardianPhoneMockup({
           aria-hidden="true"
           className="absolute top-0 left-1/2 z-10 h-5 w-24 -translate-x-1/2 rounded-b-2xl bg-slate-900"
         />
-        <div className="relative flex h-[500px] flex-col overflow-hidden rounded-[1.9rem] bg-gradient-to-b from-slate-100 via-white to-slate-50">
+        <div className="tp-follow-theme tp-dense relative flex h-[500px] flex-col overflow-hidden rounded-[1.9rem] bg-gradient-to-b from-slate-100 via-white to-slate-50">
           {/* Thanh trạng thái */}
           <div className="flex items-center justify-between px-5 pt-2.5 pb-1 text-[10px] font-semibold text-slate-700">
             <span className="font-mono">{clockLabel}</span>

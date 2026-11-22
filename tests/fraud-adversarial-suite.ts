@@ -41,6 +41,20 @@ import { createDefaultWalletBudgets } from "@/lib/wallet/defaults";
 import { vnDayKey } from "@/lib/wallet/format";
 import { maskRecipientForDisplay } from "@/lib/security/pii-display";
 import type { TransactionAnalysisRequest, WalletTransaction } from "@/types/trustpay";
+// v1.2 — VietQR Inspector, AI Payment Copilot, Active Call Shield, che PII trước Bedrock, FinOps
+import { crc16Ccitt, verifyEmvCrc } from "@/lib/qr/emvco";
+import { buildQrContextCommand, inspectVietQr, QR_SAMPLES } from "@/lib/qr/vietqr-inspector";
+import { answerBudget, COPILOT_CHIPS, parseCopilotIntent } from "@/lib/copilot/payment-copilot";
+import {
+  applyCallShieldUplift,
+  assessCallRisk,
+  CALL_DATA_TEXT,
+  CALL_SCRIPT,
+  CALL_SHIELD_RISK_FLOOR,
+} from "@/lib/call-shield/call-shield";
+import { HIGH_RISK_HOLD_SCORE } from "@/lib/guardian/guardian-alert";
+import { redactForPrompt, redactJsonForPrompt } from "@/lib/security/prompt-redaction";
+import { BASELINE_SONNET_ONLY, computeUnitCost, OPTIMIZED_FINOPS } from "@/lib/finops/unit-economics";
 
 configureOfflineMode();
 
@@ -421,6 +435,135 @@ void (async () => {
       maskRecipientForOps(recipient),
       "Che PII phía client khớp quy tắc pii-masking.ts",
     );
+  });
+
+  // ------------------------------------------------------------------ v1.2
+
+  // F21 — EMVCo TLV + CRC-16/CCITT: mã quán cà phê hợp lệ được phép thanh toán, sửa 1 ký tự → chặn
+  await suite.run("F21", "VietQR hợp lệ giải mã đúng, CRC sai sau khi sửa số tiền bị chặn", async (c) => {
+    c.eq(crc16Ccitt("123456789"), "29B1", "CRC-16/CCITT-FALSE đúng giá trị kiểm chuẩn 0x29B1");
+    const cafe = QR_SAMPLES.find((sample) => sample.id === "cafe-valid");
+    c.truthy(cafe, "Có mẫu QR quán cà phê");
+    if (!cafe) return;
+    c.ok(verifyEmvCrc(cafe.payload).valid, "CRC của mẫu hợp lệ khớp");
+    const report = inspectVietQr(cafe.payload, { blacklist: DEFAULT_BLACKLIST });
+    c.eq(report.decoded?.merchantName, "CA PHE MOC MIEN", "Đọc đúng tên đơn vị (Tag 59)");
+    c.eq(report.decoded?.accountNumber, "0071001234567", "Đọc đúng STK trong template 38");
+    c.eq(report.decoded?.amount, 45_000, "Đọc đúng số tiền (Tag 54)");
+    c.eq(report.verdict, "SAFE", "Mã hợp lệ được xếp AN TOÀN");
+    c.ok(report.canPay, "Cho phép thanh toán thật");
+    c.eq(report.suggestedCategory, "Ăn uống", "MCC 5814 → danh mục Ăn uống");
+
+    const tampered = inspectVietQr(cafe.payload.replace("540545000", "540595000"), { blacklist: DEFAULT_BLACKLIST });
+    c.ok(tampered.signals.some((signal) => signal.code === "CRC_INVALID"), "Phát hiện CRC sai khi số tiền bị sửa");
+    c.eq(tampered.verdict, "DANGER", "Mã bị chỉnh sửa bị xếp NGUY HIỂM");
+    c.ok(!tampered.canPay, "Không cho phép thanh toán mã bị chỉnh sửa");
+  });
+
+  // F22 — QR dán đè: tên không khớp chủ TK + liên kết lạ + STK cụm 1903xxxx → chặn (kể cả bộ luật API)
+  await suite.run("F22", "QR dán đè chứa liên kết lạ & STK 1903xxxx bị chặn, bộ luật API cũng xếp CAO", async (c) => {
+    const overlay = QR_SAMPLES.find((sample) => sample.id === "overlay-scam");
+    c.truthy(overlay, "Có mẫu QR dán đè");
+    if (!overlay) return;
+    const report = inspectVietQr(overlay.payload, { blacklist: DEFAULT_BLACKLIST });
+    const codes = report.signals.map((signal) => signal.code);
+    c.ok(codes.includes("NAME_MISMATCH"), "Tên trên mã không khớp chủ tài khoản");
+    c.ok(codes.includes("FOREIGN_URL"), "Phát hiện liên kết lạ trong Tag 62");
+    c.ok(codes.includes("BLACKLISTED"), "STK khớp Blacklist cụm 1903xxxx");
+    c.ok(report.blacklistMatches.includes("1903xxxx"), "Khớp đúng mục cụm 1903xxxx");
+    c.eq(report.verdict, "DANGER", "Xếp NGUY HIỂM");
+    c.eq(report.riskScore, 100, "Điểm rủi ro chạm trần 100");
+    c.ok(!report.canPay, "Chặn thanh toán");
+
+    const command = buildQrContextCommand(report, 45_000);
+    const r = await analyze({
+      commandText: command,
+      currentBudgets: DEFAULT_BUDGETS,
+      blacklist: expandBlacklistForText([...DEFAULT_BLACKLIST, "1903xxxx"], command),
+    });
+    c.eq(r.scamReport.riskLevel, "HIGH", "Bộ luật /api/analyze cũng xếp CAO khi đối chiếu Blacklist");
+  });
+
+  // F23 — AI Payment Copilot: 3 gợi ý nhanh đúng ý định, lệnh chuyển được bộ phân tích hiểu đúng
+  await suite.run("F23", "Copilot tách 250.000đ / Nguyễn Minh / Ăn uống và trả lời hạn mức thật", async (c) => {
+    const [transferChip, budgetChip, subsChip] = COPILOT_CHIPS.vi;
+    const intent = parseCopilotIntent(transferChip);
+    c.eq(intent.kind, "transfer", "Nhận đúng ý định chuyển tiền");
+    if (intent.kind === "transfer") {
+      c.eq(intent.amount, 250_000, "Số tiền 250.000đ");
+      c.eq(intent.recipient, "Nguyễn Minh", "Người nhận Nguyễn Minh");
+      c.eq(intent.category, "Ăn uống", "Danh mục Ăn uống");
+      c.eq(intent.commandText, transferChip, "Câu lệnh chuẩn hóa trùng câu gợi ý");
+      const r = await analyze(req(intent.commandText ?? ""));
+      c.eq(r.parsedAmount, 250_000, "Bộ phân tích đọc đúng 250.000đ");
+      c.eq(r.category, "Ăn uống", "Bộ phân tích xếp đúng danh mục");
+      c.includes(r.recipient, "Nguyễn Minh", "Bộ phân tích đọc đúng người nhận");
+    }
+
+    const en = parseCopilotIntent(COPILOT_CHIPS.en[0]);
+    c.ok(en.kind === "transfer" && en.amount === 250_000 && en.recipient === "Nguyen Minh", "Gợi ý tiếng Anh cũng tách đúng");
+
+    const budget = parseCopilotIntent(budgetChip);
+    c.ok(budget.kind === "budget" && budget.category === "Mua sắm", "Nhận đúng câu hỏi hạn mức Mua sắm");
+    const answer = answerBudget(createDefaultWalletBudgets(), "Mua sắm");
+    c.eq(answer[0]?.remaining, 1_500_000, "Hạn mức Mua sắm còn 1.500.000đ theo dữ liệu Ví");
+
+    c.eq(parseCopilotIntent(subsChip).kind, "subscriptions", "Nhận đúng yêu cầu soát gói đăng ký");
+  });
+
+  // F24 — Active Call Shield: chỉ NÂNG rủi ro (ADR-1), vượt ngưỡng tạm giữ và buộc sinh trắc học
+  await suite.run("F24", "Chuyển tiền khi đang nghe cuộc gọi lạ bị nâng lên CAO, tạm giữ 15 giây", async (c) => {
+    const call = assessCallRisk(CALL_SCRIPT.length, "vi");
+    c.eq(call.keywordIds.length, 7, "Nhận đủ 7 nhóm từ khóa thúc ép trong phụ đề");
+    c.eq(call.score, 100, "Mức nghi vấn cuộc gọi 100/100");
+    c.eq(assessCallRisk(CALL_SCRIPT.length, "en").keywordIds.length, 7, "Phụ đề tiếng Anh nhận đủ 7 nhóm");
+
+    const safe = await analyze(req("Chuyển 150.000đ tiền ăn cho Nguyễn Văn C"));
+    c.eq(safe.scamReport.riskLevel, "LOW", "Ngoài cuộc gọi: giao dịch thường ở mức THẤP");
+    const lifted = applyCallShieldUplift(safe, { keywordIds: call.keywordIds });
+    c.eq(lifted.scamReport.riskLevel, "HIGH", "Trong cuộc gọi lạ: nâng lên CAO");
+    c.ge(lifted.scamReport.riskScore, CALL_SHIELD_RISK_FLOOR, "Điểm ≥ sàn Call Shield");
+    c.ge(lifted.scamReport.riskScore, HIGH_RISK_HOLD_SCORE, "Vượt ngưỡng tạm giữ Hạ nhiệt 15 giây");
+    c.ok(lifted.requireBiometric, "Bắt buộc sinh trắc học");
+    c.eq(lifted.scamReport.redFlags[0], CALL_DATA_TEXT.redFlag, "Dấu hiệu đỏ Call Shield đứng đầu");
+    c.ok(
+      decideBiometric({ parsedAmount: lifted.parsedAmount, riskLevel: lifted.scamReport.riskLevel }).requireBiometric,
+      "Chính sách TT 50 yêu cầu sinh trắc học cho mức CAO",
+    );
+
+    const high = await analyze(
+      req("Chuyển gấp 12.000.000đ cho Cán bộ điều tra STK 999988887777 để xác minh tài khoản"),
+    );
+    const highLifted = applyCallShieldUplift(high, { keywordIds: [] });
+    c.ge(highLifted.scamReport.riskScore, high.scamReport.riskScore, "Không bao giờ hạ điểm đã cao (ADR-1)");
+  });
+
+  // F25 — Che PII trước Bedrock (NĐ 13/2023) giữ nguyên số tiền + mô hình chi phí ~$0.0012/GD
+  await suite.run("F25", "Prompt che CCCD/SĐT/STK nhưng giữ số tiền; chi phí FinOps ≈ $0.0012/giao dịch", async (c) => {
+    const raw = "Chuyển 12.000.000đ cho Trần Văn B STK 1903888999, SĐT 0909123888, CCCD 079203001234";
+    const redacted = redactForPrompt(raw);
+    c.ok(!redacted.text.includes("1903888999"), "Che số tài khoản");
+    c.ok(!redacted.text.includes("0909123888"), "Che số điện thoại");
+    c.ok(!containsRawCccd(redacted.text), "Không còn CCCD 12 số thô");
+    c.includes(redacted.text, "12.000.000đ", "Giữ nguyên số tiền");
+    c.includes(redactForPrompt("Chuyển 500000đ cho mẹ").text, "500000đ", "Số tiền viết liền kèm đơn vị không bị che");
+    c.eq(redacted.findings.length, 3, "Ghi nhận 3 trường PII đã che");
+
+    const json = redactJsonForPrompt({
+      ticketId: "TCK-20261120-001",
+      recipient: "Trần Văn B (1903888999)",
+      evidenceImageBase64: TINY_PNG_BASE64,
+      amount: 12_000_000,
+    }) as Record<string, unknown>;
+    c.eq(json.ticketId, "TCK-20261120-001", "Giữ nguyên mã ticket");
+    c.ok(!String(json.recipient).includes("1903888999"), "Che STK trong JSON tham chiếu");
+    c.ok(!("evidenceImageBase64" in json), "Loại ảnh base64 khỏi prompt");
+    c.eq(json.amount, 12_000_000, "Số tiền dạng number giữ nguyên");
+
+    const optimized = computeUnitCost(OPTIMIZED_FINOPS);
+    const baseline = computeUnitCost(BASELINE_SONNET_ONLY);
+    c.eq(optimized.perTransaction.toFixed(4), "0.0012", "Kịch bản FinOps ≈ $0.0012 / giao dịch");
+    c.eq(baseline.perTransaction.toFixed(4), "0.0056", "Baseline Sonnet-only ≈ $0.0056 / giao dịch");
   });
 
   suite.finish();

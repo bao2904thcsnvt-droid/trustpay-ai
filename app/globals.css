@@ -1,11 +1,190 @@
 @import "tailwindcss";
 
+/*
+ * Dark mode theo lớp `.dark` trên <html> (script trong app/layout.tsx đặt lớp
+ * trước khi trình duyệt vẽ khung hình đầu tiên → không nháy sáng).
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
   --momo-primary: #a50064;
   --momo-secondary: #d82d8b;
   --momo-soft: #fdf2f8;
+  /* Màu chữ thương hiệu (MoMo) — sáng hơn ở Dark mode để đủ tương phản. */
+  --tp-brand-text: #a50064;
+
+  /*
+   * Ảnh chụp bảng màu Tailwind gốc. Lớp `.dark` ghi đè bảng màu trên <body>,
+   * còn <html> giữ giá trị gốc → các vùng "nền đặc" (nút màu, thẻ tối, khung
+   * camera…) khôi phục đúng màu thiết kế ban đầu qua các biến `--tp-o-*`.
+   */
+  --tp-o-white: var(--color-white);
+  --tp-o-slate-50: var(--color-slate-50);
+  --tp-o-slate-100: var(--color-slate-100);
+  --tp-o-slate-200: var(--color-slate-200);
+  --tp-o-slate-300: var(--color-slate-300);
+  --tp-o-slate-400: var(--color-slate-400);
+  --tp-o-slate-500: var(--color-slate-500);
+  --tp-o-slate-600: var(--color-slate-600);
+  --tp-o-slate-700: var(--color-slate-700);
+  --tp-o-slate-800: var(--color-slate-800);
+  --tp-o-slate-900: var(--color-slate-900);
+  --tp-o-slate-950: var(--color-slate-950);
+  --tp-o-red-50: var(--color-red-50);
+  --tp-o-red-100: var(--color-red-100);
+  --tp-o-red-200: var(--color-red-200);
+  --tp-o-red-300: var(--color-red-300);
+  --tp-o-red-600: var(--color-red-600);
+  --tp-o-red-700: var(--color-red-700);
+  --tp-o-red-800: var(--color-red-800);
+  --tp-o-red-900: var(--color-red-900);
+  --tp-o-red-950: var(--color-red-950);
+  --tp-o-orange-50: var(--color-orange-50);
+  --tp-o-orange-100: var(--color-orange-100);
+  --tp-o-orange-200: var(--color-orange-200);
+  --tp-o-orange-300: var(--color-orange-300);
+  --tp-o-orange-600: var(--color-orange-600);
+  --tp-o-orange-700: var(--color-orange-700);
+  --tp-o-orange-800: var(--color-orange-800);
+  --tp-o-orange-900: var(--color-orange-900);
+  --tp-o-orange-950: var(--color-orange-950);
+  --tp-o-amber-50: var(--color-amber-50);
+  --tp-o-amber-100: var(--color-amber-100);
+  --tp-o-amber-200: var(--color-amber-200);
+  --tp-o-amber-300: var(--color-amber-300);
+  --tp-o-amber-600: var(--color-amber-600);
+  --tp-o-amber-700: var(--color-amber-700);
+  --tp-o-amber-800: var(--color-amber-800);
+  --tp-o-amber-900: var(--color-amber-900);
+  --tp-o-amber-950: var(--color-amber-950);
+  --tp-o-yellow-50: var(--color-yellow-50);
+  --tp-o-yellow-100: var(--color-yellow-100);
+  --tp-o-yellow-200: var(--color-yellow-200);
+  --tp-o-yellow-300: var(--color-yellow-300);
+  --tp-o-yellow-600: var(--color-yellow-600);
+  --tp-o-yellow-700: var(--color-yellow-700);
+  --tp-o-yellow-800: var(--color-yellow-800);
+  --tp-o-yellow-900: var(--color-yellow-900);
+  --tp-o-yellow-950: var(--color-yellow-950);
+  --tp-o-lime-50: var(--color-lime-50);
+  --tp-o-lime-100: var(--color-lime-100);
+  --tp-o-lime-200: var(--color-lime-200);
+  --tp-o-lime-300: var(--color-lime-300);
+  --tp-o-lime-600: var(--color-lime-600);
+  --tp-o-lime-700: var(--color-lime-700);
+  --tp-o-lime-800: var(--color-lime-800);
+  --tp-o-lime-900: var(--color-lime-900);
+  --tp-o-lime-950: var(--color-lime-950);
+  --tp-o-green-50: var(--color-green-50);
+  --tp-o-green-100: var(--color-green-100);
+  --tp-o-green-200: var(--color-green-200);
+  --tp-o-green-300: var(--color-green-300);
+  --tp-o-green-600: var(--color-green-600);
+  --tp-o-green-700: var(--color-green-700);
+  --tp-o-green-800: var(--color-green-800);
+  --tp-o-green-900: var(--color-green-900);
+  --tp-o-green-950: var(--color-green-950);
+  --tp-o-emerald-50: var(--color-emerald-50);
+  --tp-o-emerald-100: var(--color-emerald-100);
+  --tp-o-emerald-200: var(--color-emerald-200);
+  --tp-o-emerald-300: var(--color-emerald-300);
+  --tp-o-emerald-600: var(--color-emerald-600);
+  --tp-o-emerald-700: var(--color-emerald-700);
+  --tp-o-emerald-800: var(--color-emerald-800);
+  --tp-o-emerald-900: var(--color-emerald-900);
+  --tp-o-emerald-950: var(--color-emerald-950);
+  --tp-o-teal-50: var(--color-teal-50);
+  --tp-o-teal-100: var(--color-teal-100);
+  --tp-o-teal-200: var(--color-teal-200);
+  --tp-o-teal-300: var(--color-teal-300);
+  --tp-o-teal-600: var(--color-teal-600);
+  --tp-o-teal-700: var(--color-teal-700);
+  --tp-o-teal-800: var(--color-teal-800);
+  --tp-o-teal-900: var(--color-teal-900);
+  --tp-o-teal-950: var(--color-teal-950);
+  --tp-o-cyan-50: var(--color-cyan-50);
+  --tp-o-cyan-100: var(--color-cyan-100);
+  --tp-o-cyan-200: var(--color-cyan-200);
+  --tp-o-cyan-300: var(--color-cyan-300);
+  --tp-o-cyan-600: var(--color-cyan-600);
+  --tp-o-cyan-700: var(--color-cyan-700);
+  --tp-o-cyan-800: var(--color-cyan-800);
+  --tp-o-cyan-900: var(--color-cyan-900);
+  --tp-o-cyan-950: var(--color-cyan-950);
+  --tp-o-sky-50: var(--color-sky-50);
+  --tp-o-sky-100: var(--color-sky-100);
+  --tp-o-sky-200: var(--color-sky-200);
+  --tp-o-sky-300: var(--color-sky-300);
+  --tp-o-sky-600: var(--color-sky-600);
+  --tp-o-sky-700: var(--color-sky-700);
+  --tp-o-sky-800: var(--color-sky-800);
+  --tp-o-sky-900: var(--color-sky-900);
+  --tp-o-sky-950: var(--color-sky-950);
+  --tp-o-blue-50: var(--color-blue-50);
+  --tp-o-blue-100: var(--color-blue-100);
+  --tp-o-blue-200: var(--color-blue-200);
+  --tp-o-blue-300: var(--color-blue-300);
+  --tp-o-blue-600: var(--color-blue-600);
+  --tp-o-blue-700: var(--color-blue-700);
+  --tp-o-blue-800: var(--color-blue-800);
+  --tp-o-blue-900: var(--color-blue-900);
+  --tp-o-blue-950: var(--color-blue-950);
+  --tp-o-indigo-50: var(--color-indigo-50);
+  --tp-o-indigo-100: var(--color-indigo-100);
+  --tp-o-indigo-200: var(--color-indigo-200);
+  --tp-o-indigo-300: var(--color-indigo-300);
+  --tp-o-indigo-600: var(--color-indigo-600);
+  --tp-o-indigo-700: var(--color-indigo-700);
+  --tp-o-indigo-800: var(--color-indigo-800);
+  --tp-o-indigo-900: var(--color-indigo-900);
+  --tp-o-indigo-950: var(--color-indigo-950);
+  --tp-o-violet-50: var(--color-violet-50);
+  --tp-o-violet-100: var(--color-violet-100);
+  --tp-o-violet-200: var(--color-violet-200);
+  --tp-o-violet-300: var(--color-violet-300);
+  --tp-o-violet-600: var(--color-violet-600);
+  --tp-o-violet-700: var(--color-violet-700);
+  --tp-o-violet-800: var(--color-violet-800);
+  --tp-o-violet-900: var(--color-violet-900);
+  --tp-o-violet-950: var(--color-violet-950);
+  --tp-o-purple-50: var(--color-purple-50);
+  --tp-o-purple-100: var(--color-purple-100);
+  --tp-o-purple-200: var(--color-purple-200);
+  --tp-o-purple-300: var(--color-purple-300);
+  --tp-o-purple-600: var(--color-purple-600);
+  --tp-o-purple-700: var(--color-purple-700);
+  --tp-o-purple-800: var(--color-purple-800);
+  --tp-o-purple-900: var(--color-purple-900);
+  --tp-o-purple-950: var(--color-purple-950);
+  --tp-o-fuchsia-50: var(--color-fuchsia-50);
+  --tp-o-fuchsia-100: var(--color-fuchsia-100);
+  --tp-o-fuchsia-200: var(--color-fuchsia-200);
+  --tp-o-fuchsia-300: var(--color-fuchsia-300);
+  --tp-o-fuchsia-600: var(--color-fuchsia-600);
+  --tp-o-fuchsia-700: var(--color-fuchsia-700);
+  --tp-o-fuchsia-800: var(--color-fuchsia-800);
+  --tp-o-fuchsia-900: var(--color-fuchsia-900);
+  --tp-o-fuchsia-950: var(--color-fuchsia-950);
+  --tp-o-pink-50: var(--color-pink-50);
+  --tp-o-pink-100: var(--color-pink-100);
+  --tp-o-pink-200: var(--color-pink-200);
+  --tp-o-pink-300: var(--color-pink-300);
+  --tp-o-pink-600: var(--color-pink-600);
+  --tp-o-pink-700: var(--color-pink-700);
+  --tp-o-pink-800: var(--color-pink-800);
+  --tp-o-pink-900: var(--color-pink-900);
+  --tp-o-pink-950: var(--color-pink-950);
+  --tp-o-rose-50: var(--color-rose-50);
+  --tp-o-rose-100: var(--color-rose-100);
+  --tp-o-rose-200: var(--color-rose-200);
+  --tp-o-rose-300: var(--color-rose-300);
+  --tp-o-rose-600: var(--color-rose-600);
+  --tp-o-rose-700: var(--color-rose-700);
+  --tp-o-rose-800: var(--color-rose-800);
+  --tp-o-rose-900: var(--color-rose-900);
+  --tp-o-rose-950: var(--color-rose-950);
 }
 
 @theme inline {
@@ -21,7 +200,542 @@
 body {
   background: var(--background);
   color: var(--foreground);
+  /* Chống tràn ngang trên điện thoại (giá trị được truyền lên viewport nên không phá `sticky`). */
+  overflow-x: hidden;
 }
+
+/* ===================================================================== */
+/* Dark mode — ánh xạ lại bảng màu                                       */
+/* ===================================================================== */
+/*
+ * Nền sáng (white, *-50…300) → nền tối có pha sắc; chữ tối (*-600…950) → chữ
+ * sáng. Kết quả: trang `slate-950`, thẻ `slate-900`, viền `slate-800` đúng
+ * thiết kế, không còn chữ "tàng hình" trong thẻ, form, bảng hay modal.
+ * Lớp `.tp-follow-theme` bật lại ánh xạ bên trong vùng nền đặc (vd màn hình
+ * điện thoại Người giám hộ nằm trong khung máy màu tối).
+ */
+html.dark {
+  color-scheme: dark;
+}
+
+.dark body,
+.dark .tp-follow-theme {
+  --background: #020617;
+  --foreground: #e2e8f0;
+  --tp-brand-text: #f472b6;
+
+  --color-white: #0f172a;
+  --color-slate-50: #020617;
+  --color-slate-100: #1e293b;
+  --color-slate-200: #1e293b;
+  --color-slate-300: #334155;
+  --color-slate-400: #8291a7;
+  --color-slate-500: #9aa8bc;
+  --color-slate-600: #b6c2d2;
+  --color-slate-700: #d3dce7;
+  --color-slate-800: #e6ecf3;
+  --color-slate-900: #f1f5f9;
+  --color-slate-950: #f8fafc;
+
+  --color-red-50: color-mix(in oklab, #ef4444 13%, #0f172a);
+  --color-red-100: color-mix(in oklab, #ef4444 20%, #0f172a);
+  --color-red-200: color-mix(in oklab, #ef4444 32%, #0f172a);
+  --color-red-300: color-mix(in oklab, #ef4444 46%, #0f172a);
+  --color-red-600: #f87171;
+  --color-red-700: #fca5a5;
+  --color-red-800: #fecaca;
+  --color-red-900: #fee2e2;
+  --color-red-950: #fef2f2;
+
+  --color-orange-50: color-mix(in oklab, #f97316 13%, #0f172a);
+  --color-orange-100: color-mix(in oklab, #f97316 20%, #0f172a);
+  --color-orange-200: color-mix(in oklab, #f97316 32%, #0f172a);
+  --color-orange-300: color-mix(in oklab, #f97316 46%, #0f172a);
+  --color-orange-600: #fb923c;
+  --color-orange-700: #fdba74;
+  --color-orange-800: #fed7aa;
+  --color-orange-900: #ffedd5;
+  --color-orange-950: #fff7ed;
+
+  --color-amber-50: color-mix(in oklab, #f59e0b 13%, #0f172a);
+  --color-amber-100: color-mix(in oklab, #f59e0b 20%, #0f172a);
+  --color-amber-200: color-mix(in oklab, #f59e0b 32%, #0f172a);
+  --color-amber-300: color-mix(in oklab, #f59e0b 46%, #0f172a);
+  --color-amber-600: #fbbf24;
+  --color-amber-700: #fcd34d;
+  --color-amber-800: #fde68a;
+  --color-amber-900: #fef3c7;
+  --color-amber-950: #fffbeb;
+
+  --color-yellow-50: color-mix(in oklab, #eab308 13%, #0f172a);
+  --color-yellow-100: color-mix(in oklab, #eab308 20%, #0f172a);
+  --color-yellow-200: color-mix(in oklab, #eab308 32%, #0f172a);
+  --color-yellow-300: color-mix(in oklab, #eab308 46%, #0f172a);
+  --color-yellow-600: #facc15;
+  --color-yellow-700: #fde047;
+  --color-yellow-800: #fef08a;
+  --color-yellow-900: #fef9c3;
+  --color-yellow-950: #fefce8;
+
+  --color-lime-50: color-mix(in oklab, #84cc16 13%, #0f172a);
+  --color-lime-100: color-mix(in oklab, #84cc16 20%, #0f172a);
+  --color-lime-200: color-mix(in oklab, #84cc16 32%, #0f172a);
+  --color-lime-300: color-mix(in oklab, #84cc16 46%, #0f172a);
+  --color-lime-600: #a3e635;
+  --color-lime-700: #bef264;
+  --color-lime-800: #d9f99d;
+  --color-lime-900: #ecfccb;
+  --color-lime-950: #f7fee7;
+
+  --color-green-50: color-mix(in oklab, #22c55e 13%, #0f172a);
+  --color-green-100: color-mix(in oklab, #22c55e 20%, #0f172a);
+  --color-green-200: color-mix(in oklab, #22c55e 32%, #0f172a);
+  --color-green-300: color-mix(in oklab, #22c55e 46%, #0f172a);
+  --color-green-600: #4ade80;
+  --color-green-700: #86efac;
+  --color-green-800: #bbf7d0;
+  --color-green-900: #dcfce7;
+  --color-green-950: #f0fdf4;
+
+  --color-emerald-50: color-mix(in oklab, #10b981 13%, #0f172a);
+  --color-emerald-100: color-mix(in oklab, #10b981 20%, #0f172a);
+  --color-emerald-200: color-mix(in oklab, #10b981 32%, #0f172a);
+  --color-emerald-300: color-mix(in oklab, #10b981 46%, #0f172a);
+  --color-emerald-600: #34d399;
+  --color-emerald-700: #6ee7b7;
+  --color-emerald-800: #a7f3d0;
+  --color-emerald-900: #d1fae5;
+  --color-emerald-950: #ecfdf5;
+
+  --color-teal-50: color-mix(in oklab, #14b8a6 13%, #0f172a);
+  --color-teal-100: color-mix(in oklab, #14b8a6 20%, #0f172a);
+  --color-teal-200: color-mix(in oklab, #14b8a6 32%, #0f172a);
+  --color-teal-300: color-mix(in oklab, #14b8a6 46%, #0f172a);
+  --color-teal-600: #2dd4bf;
+  --color-teal-700: #5eead4;
+  --color-teal-800: #99f6e4;
+  --color-teal-900: #ccfbf1;
+  --color-teal-950: #f0fdfa;
+
+  --color-cyan-50: color-mix(in oklab, #06b6d4 13%, #0f172a);
+  --color-cyan-100: color-mix(in oklab, #06b6d4 20%, #0f172a);
+  --color-cyan-200: color-mix(in oklab, #06b6d4 32%, #0f172a);
+  --color-cyan-300: color-mix(in oklab, #06b6d4 46%, #0f172a);
+  --color-cyan-600: #22d3ee;
+  --color-cyan-700: #67e8f9;
+  --color-cyan-800: #a5f3fc;
+  --color-cyan-900: #cffafe;
+  --color-cyan-950: #ecfeff;
+
+  --color-sky-50: color-mix(in oklab, #0ea5e9 13%, #0f172a);
+  --color-sky-100: color-mix(in oklab, #0ea5e9 20%, #0f172a);
+  --color-sky-200: color-mix(in oklab, #0ea5e9 32%, #0f172a);
+  --color-sky-300: color-mix(in oklab, #0ea5e9 46%, #0f172a);
+  --color-sky-600: #38bdf8;
+  --color-sky-700: #7dd3fc;
+  --color-sky-800: #bae6fd;
+  --color-sky-900: #e0f2fe;
+  --color-sky-950: #f0f9ff;
+
+  --color-blue-50: color-mix(in oklab, #3b82f6 13%, #0f172a);
+  --color-blue-100: color-mix(in oklab, #3b82f6 20%, #0f172a);
+  --color-blue-200: color-mix(in oklab, #3b82f6 32%, #0f172a);
+  --color-blue-300: color-mix(in oklab, #3b82f6 46%, #0f172a);
+  --color-blue-600: #60a5fa;
+  --color-blue-700: #93c5fd;
+  --color-blue-800: #bfdbfe;
+  --color-blue-900: #dbeafe;
+  --color-blue-950: #eff6ff;
+
+  --color-indigo-50: color-mix(in oklab, #6366f1 13%, #0f172a);
+  --color-indigo-100: color-mix(in oklab, #6366f1 20%, #0f172a);
+  --color-indigo-200: color-mix(in oklab, #6366f1 32%, #0f172a);
+  --color-indigo-300: color-mix(in oklab, #6366f1 46%, #0f172a);
+  --color-indigo-600: #818cf8;
+  --color-indigo-700: #a5b4fc;
+  --color-indigo-800: #c7d2fe;
+  --color-indigo-900: #e0e7ff;
+  --color-indigo-950: #eef2ff;
+
+  --color-violet-50: color-mix(in oklab, #8b5cf6 13%, #0f172a);
+  --color-violet-100: color-mix(in oklab, #8b5cf6 20%, #0f172a);
+  --color-violet-200: color-mix(in oklab, #8b5cf6 32%, #0f172a);
+  --color-violet-300: color-mix(in oklab, #8b5cf6 46%, #0f172a);
+  --color-violet-600: #a78bfa;
+  --color-violet-700: #c4b5fd;
+  --color-violet-800: #ddd6fe;
+  --color-violet-900: #ede9fe;
+  --color-violet-950: #f5f3ff;
+
+  --color-purple-50: color-mix(in oklab, #a855f7 13%, #0f172a);
+  --color-purple-100: color-mix(in oklab, #a855f7 20%, #0f172a);
+  --color-purple-200: color-mix(in oklab, #a855f7 32%, #0f172a);
+  --color-purple-300: color-mix(in oklab, #a855f7 46%, #0f172a);
+  --color-purple-600: #c084fc;
+  --color-purple-700: #d8b4fe;
+  --color-purple-800: #e9d5ff;
+  --color-purple-900: #f3e8ff;
+  --color-purple-950: #faf5ff;
+
+  --color-fuchsia-50: color-mix(in oklab, #d946ef 13%, #0f172a);
+  --color-fuchsia-100: color-mix(in oklab, #d946ef 20%, #0f172a);
+  --color-fuchsia-200: color-mix(in oklab, #d946ef 32%, #0f172a);
+  --color-fuchsia-300: color-mix(in oklab, #d946ef 46%, #0f172a);
+  --color-fuchsia-600: #e879f9;
+  --color-fuchsia-700: #f0abfc;
+  --color-fuchsia-800: #f5d0fe;
+  --color-fuchsia-900: #fae8ff;
+  --color-fuchsia-950: #fdf4ff;
+
+  --color-pink-50: color-mix(in oklab, #ec4899 13%, #0f172a);
+  --color-pink-100: color-mix(in oklab, #ec4899 20%, #0f172a);
+  --color-pink-200: color-mix(in oklab, #ec4899 32%, #0f172a);
+  --color-pink-300: color-mix(in oklab, #ec4899 46%, #0f172a);
+  --color-pink-600: #f472b6;
+  --color-pink-700: #f9a8d4;
+  --color-pink-800: #fbcfe8;
+  --color-pink-900: #fce7f3;
+  --color-pink-950: #fdf2f8;
+
+  --color-rose-50: color-mix(in oklab, #f43f5e 13%, #0f172a);
+  --color-rose-100: color-mix(in oklab, #f43f5e 20%, #0f172a);
+  --color-rose-200: color-mix(in oklab, #f43f5e 32%, #0f172a);
+  --color-rose-300: color-mix(in oklab, #f43f5e 46%, #0f172a);
+  --color-rose-600: #fb7185;
+  --color-rose-700: #fda4af;
+  --color-rose-800: #fecdd3;
+  --color-rose-900: #ffe4e6;
+  --color-rose-950: #fff1f2;
+}
+
+/*
+ * Vùng "nền đặc": nút/nhãn chữ trắng, thẻ tối, khung camera, dải gradient màu.
+ * Nội dung bên trong được thiết kế cho chính nền đó → khôi phục bảng màu gốc.
+ */
+.dark
+  body
+  :is(
+    .text-white,
+    [class^="text-white/"],
+    [class*=" text-white/"],
+    .bg-slate-700,
+    .bg-slate-800,
+    .bg-slate-900,
+    .bg-slate-950,
+    [class*="from-slate-7"],
+    [class*="from-slate-8"],
+    [class*="from-slate-9"],
+    [class*="from-[#"]:not([class*="from-[#fdf2f8"]),
+    .bg-red-400, .bg-red-500, .bg-red-600, .bg-red-700, .bg-red-800, .bg-red-900, .bg-red-950,
+    .bg-orange-400, .bg-orange-500, .bg-orange-600, .bg-orange-700, .bg-orange-800, .bg-orange-900, .bg-orange-950,
+    .bg-amber-400, .bg-amber-500, .bg-amber-600, .bg-amber-700, .bg-amber-800, .bg-amber-900, .bg-amber-950,
+    .bg-yellow-400, .bg-yellow-500, .bg-yellow-600, .bg-yellow-700, .bg-yellow-800, .bg-yellow-900, .bg-yellow-950,
+    .bg-lime-400, .bg-lime-500, .bg-lime-600, .bg-lime-700, .bg-lime-800, .bg-lime-900, .bg-lime-950,
+    .bg-green-400, .bg-green-500, .bg-green-600, .bg-green-700, .bg-green-800, .bg-green-900, .bg-green-950,
+    .bg-emerald-400, .bg-emerald-500, .bg-emerald-600, .bg-emerald-700, .bg-emerald-800, .bg-emerald-900, .bg-emerald-950,
+    .bg-teal-400, .bg-teal-500, .bg-teal-600, .bg-teal-700, .bg-teal-800, .bg-teal-900, .bg-teal-950,
+    .bg-cyan-400, .bg-cyan-500, .bg-cyan-600, .bg-cyan-700, .bg-cyan-800, .bg-cyan-900, .bg-cyan-950,
+    .bg-sky-400, .bg-sky-500, .bg-sky-600, .bg-sky-700, .bg-sky-800, .bg-sky-900, .bg-sky-950,
+    .bg-blue-400, .bg-blue-500, .bg-blue-600, .bg-blue-700, .bg-blue-800, .bg-blue-900, .bg-blue-950,
+    .bg-indigo-400, .bg-indigo-500, .bg-indigo-600, .bg-indigo-700, .bg-indigo-800, .bg-indigo-900, .bg-indigo-950,
+    .bg-violet-400, .bg-violet-500, .bg-violet-600, .bg-violet-700, .bg-violet-800, .bg-violet-900, .bg-violet-950,
+    .bg-purple-400, .bg-purple-500, .bg-purple-600, .bg-purple-700, .bg-purple-800, .bg-purple-900, .bg-purple-950,
+    .bg-fuchsia-400, .bg-fuchsia-500, .bg-fuchsia-600, .bg-fuchsia-700, .bg-fuchsia-800, .bg-fuchsia-900, .bg-fuchsia-950,
+    .bg-pink-400, .bg-pink-500, .bg-pink-600, .bg-pink-700, .bg-pink-800, .bg-pink-900, .bg-pink-950,
+    .bg-rose-400, .bg-rose-500, .bg-rose-600, .bg-rose-700, .bg-rose-800, .bg-rose-900, .bg-rose-950,
+    [class*="from-red-4"], .from-red-500, [class*="from-red-6"], [class*="from-red-7"], [class*="from-red-8"], [class*="from-red-9"],
+    [class*="from-orange-4"], .from-orange-500, [class*="from-orange-6"], [class*="from-orange-7"], [class*="from-orange-8"], [class*="from-orange-9"],
+    [class*="from-amber-4"], .from-amber-500, [class*="from-amber-6"], [class*="from-amber-7"], [class*="from-amber-8"], [class*="from-amber-9"],
+    [class*="from-yellow-4"], .from-yellow-500, [class*="from-yellow-6"], [class*="from-yellow-7"], [class*="from-yellow-8"], [class*="from-yellow-9"],
+    [class*="from-lime-4"], .from-lime-500, [class*="from-lime-6"], [class*="from-lime-7"], [class*="from-lime-8"], [class*="from-lime-9"],
+    [class*="from-green-4"], .from-green-500, [class*="from-green-6"], [class*="from-green-7"], [class*="from-green-8"], [class*="from-green-9"],
+    [class*="from-emerald-4"], .from-emerald-500, [class*="from-emerald-6"], [class*="from-emerald-7"], [class*="from-emerald-8"], [class*="from-emerald-9"],
+    [class*="from-teal-4"], .from-teal-500, [class*="from-teal-6"], [class*="from-teal-7"], [class*="from-teal-8"], [class*="from-teal-9"],
+    [class*="from-cyan-4"], .from-cyan-500, [class*="from-cyan-6"], [class*="from-cyan-7"], [class*="from-cyan-8"], [class*="from-cyan-9"],
+    [class*="from-sky-4"], .from-sky-500, [class*="from-sky-6"], [class*="from-sky-7"], [class*="from-sky-8"], [class*="from-sky-9"],
+    [class*="from-blue-4"], .from-blue-500, [class*="from-blue-6"], [class*="from-blue-7"], [class*="from-blue-8"], [class*="from-blue-9"],
+    [class*="from-indigo-4"], .from-indigo-500, [class*="from-indigo-6"], [class*="from-indigo-7"], [class*="from-indigo-8"], [class*="from-indigo-9"],
+    [class*="from-violet-4"], .from-violet-500, [class*="from-violet-6"], [class*="from-violet-7"], [class*="from-violet-8"], [class*="from-violet-9"],
+    [class*="from-purple-4"], .from-purple-500, [class*="from-purple-6"], [class*="from-purple-7"], [class*="from-purple-8"], [class*="from-purple-9"],
+    [class*="from-fuchsia-4"], .from-fuchsia-500, [class*="from-fuchsia-6"], [class*="from-fuchsia-7"], [class*="from-fuchsia-8"], [class*="from-fuchsia-9"],
+    [class*="from-pink-4"], .from-pink-500, [class*="from-pink-6"], [class*="from-pink-7"], [class*="from-pink-8"], [class*="from-pink-9"],
+    [class*="from-rose-4"], .from-rose-500, [class*="from-rose-6"], [class*="from-rose-7"], [class*="from-rose-8"], [class*="from-rose-9"]
+  ) {
+  --tp-brand-text: #a50064;
+  --color-white: var(--tp-o-white);
+  --color-slate-50: var(--tp-o-slate-50);
+  --color-slate-100: var(--tp-o-slate-100);
+  --color-slate-200: var(--tp-o-slate-200);
+  --color-slate-300: var(--tp-o-slate-300);
+  --color-slate-400: var(--tp-o-slate-400);
+  --color-slate-500: var(--tp-o-slate-500);
+  --color-slate-600: var(--tp-o-slate-600);
+  --color-slate-700: var(--tp-o-slate-700);
+  --color-slate-800: var(--tp-o-slate-800);
+  --color-slate-900: var(--tp-o-slate-900);
+  --color-slate-950: var(--tp-o-slate-950);
+  --color-red-50: var(--tp-o-red-50);
+  --color-red-100: var(--tp-o-red-100);
+  --color-red-200: var(--tp-o-red-200);
+  --color-red-300: var(--tp-o-red-300);
+  --color-red-600: var(--tp-o-red-600);
+  --color-red-700: var(--tp-o-red-700);
+  --color-red-800: var(--tp-o-red-800);
+  --color-red-900: var(--tp-o-red-900);
+  --color-red-950: var(--tp-o-red-950);
+  --color-orange-50: var(--tp-o-orange-50);
+  --color-orange-100: var(--tp-o-orange-100);
+  --color-orange-200: var(--tp-o-orange-200);
+  --color-orange-300: var(--tp-o-orange-300);
+  --color-orange-600: var(--tp-o-orange-600);
+  --color-orange-700: var(--tp-o-orange-700);
+  --color-orange-800: var(--tp-o-orange-800);
+  --color-orange-900: var(--tp-o-orange-900);
+  --color-orange-950: var(--tp-o-orange-950);
+  --color-amber-50: var(--tp-o-amber-50);
+  --color-amber-100: var(--tp-o-amber-100);
+  --color-amber-200: var(--tp-o-amber-200);
+  --color-amber-300: var(--tp-o-amber-300);
+  --color-amber-600: var(--tp-o-amber-600);
+  --color-amber-700: var(--tp-o-amber-700);
+  --color-amber-800: var(--tp-o-amber-800);
+  --color-amber-900: var(--tp-o-amber-900);
+  --color-amber-950: var(--tp-o-amber-950);
+  --color-yellow-50: var(--tp-o-yellow-50);
+  --color-yellow-100: var(--tp-o-yellow-100);
+  --color-yellow-200: var(--tp-o-yellow-200);
+  --color-yellow-300: var(--tp-o-yellow-300);
+  --color-yellow-600: var(--tp-o-yellow-600);
+  --color-yellow-700: var(--tp-o-yellow-700);
+  --color-yellow-800: var(--tp-o-yellow-800);
+  --color-yellow-900: var(--tp-o-yellow-900);
+  --color-yellow-950: var(--tp-o-yellow-950);
+  --color-lime-50: var(--tp-o-lime-50);
+  --color-lime-100: var(--tp-o-lime-100);
+  --color-lime-200: var(--tp-o-lime-200);
+  --color-lime-300: var(--tp-o-lime-300);
+  --color-lime-600: var(--tp-o-lime-600);
+  --color-lime-700: var(--tp-o-lime-700);
+  --color-lime-800: var(--tp-o-lime-800);
+  --color-lime-900: var(--tp-o-lime-900);
+  --color-lime-950: var(--tp-o-lime-950);
+  --color-green-50: var(--tp-o-green-50);
+  --color-green-100: var(--tp-o-green-100);
+  --color-green-200: var(--tp-o-green-200);
+  --color-green-300: var(--tp-o-green-300);
+  --color-green-600: var(--tp-o-green-600);
+  --color-green-700: var(--tp-o-green-700);
+  --color-green-800: var(--tp-o-green-800);
+  --color-green-900: var(--tp-o-green-900);
+  --color-green-950: var(--tp-o-green-950);
+  --color-emerald-50: var(--tp-o-emerald-50);
+  --color-emerald-100: var(--tp-o-emerald-100);
+  --color-emerald-200: var(--tp-o-emerald-200);
+  --color-emerald-300: var(--tp-o-emerald-300);
+  --color-emerald-600: var(--tp-o-emerald-600);
+  --color-emerald-700: var(--tp-o-emerald-700);
+  --color-emerald-800: var(--tp-o-emerald-800);
+  --color-emerald-900: var(--tp-o-emerald-900);
+  --color-emerald-950: var(--tp-o-emerald-950);
+  --color-teal-50: var(--tp-o-teal-50);
+  --color-teal-100: var(--tp-o-teal-100);
+  --color-teal-200: var(--tp-o-teal-200);
+  --color-teal-300: var(--tp-o-teal-300);
+  --color-teal-600: var(--tp-o-teal-600);
+  --color-teal-700: var(--tp-o-teal-700);
+  --color-teal-800: var(--tp-o-teal-800);
+  --color-teal-900: var(--tp-o-teal-900);
+  --color-teal-950: var(--tp-o-teal-950);
+  --color-cyan-50: var(--tp-o-cyan-50);
+  --color-cyan-100: var(--tp-o-cyan-100);
+  --color-cyan-200: var(--tp-o-cyan-200);
+  --color-cyan-300: var(--tp-o-cyan-300);
+  --color-cyan-600: var(--tp-o-cyan-600);
+  --color-cyan-700: var(--tp-o-cyan-700);
+  --color-cyan-800: var(--tp-o-cyan-800);
+  --color-cyan-900: var(--tp-o-cyan-900);
+  --color-cyan-950: var(--tp-o-cyan-950);
+  --color-sky-50: var(--tp-o-sky-50);
+  --color-sky-100: var(--tp-o-sky-100);
+  --color-sky-200: var(--tp-o-sky-200);
+  --color-sky-300: var(--tp-o-sky-300);
+  --color-sky-600: var(--tp-o-sky-600);
+  --color-sky-700: var(--tp-o-sky-700);
+  --color-sky-800: var(--tp-o-sky-800);
+  --color-sky-900: var(--tp-o-sky-900);
+  --color-sky-950: var(--tp-o-sky-950);
+  --color-blue-50: var(--tp-o-blue-50);
+  --color-blue-100: var(--tp-o-blue-100);
+  --color-blue-200: var(--tp-o-blue-200);
+  --color-blue-300: var(--tp-o-blue-300);
+  --color-blue-600: var(--tp-o-blue-600);
+  --color-blue-700: var(--tp-o-blue-700);
+  --color-blue-800: var(--tp-o-blue-800);
+  --color-blue-900: var(--tp-o-blue-900);
+  --color-blue-950: var(--tp-o-blue-950);
+  --color-indigo-50: var(--tp-o-indigo-50);
+  --color-indigo-100: var(--tp-o-indigo-100);
+  --color-indigo-200: var(--tp-o-indigo-200);
+  --color-indigo-300: var(--tp-o-indigo-300);
+  --color-indigo-600: var(--tp-o-indigo-600);
+  --color-indigo-700: var(--tp-o-indigo-700);
+  --color-indigo-800: var(--tp-o-indigo-800);
+  --color-indigo-900: var(--tp-o-indigo-900);
+  --color-indigo-950: var(--tp-o-indigo-950);
+  --color-violet-50: var(--tp-o-violet-50);
+  --color-violet-100: var(--tp-o-violet-100);
+  --color-violet-200: var(--tp-o-violet-200);
+  --color-violet-300: var(--tp-o-violet-300);
+  --color-violet-600: var(--tp-o-violet-600);
+  --color-violet-700: var(--tp-o-violet-700);
+  --color-violet-800: var(--tp-o-violet-800);
+  --color-violet-900: var(--tp-o-violet-900);
+  --color-violet-950: var(--tp-o-violet-950);
+  --color-purple-50: var(--tp-o-purple-50);
+  --color-purple-100: var(--tp-o-purple-100);
+  --color-purple-200: var(--tp-o-purple-200);
+  --color-purple-300: var(--tp-o-purple-300);
+  --color-purple-600: var(--tp-o-purple-600);
+  --color-purple-700: var(--tp-o-purple-700);
+  --color-purple-800: var(--tp-o-purple-800);
+  --color-purple-900: var(--tp-o-purple-900);
+  --color-purple-950: var(--tp-o-purple-950);
+  --color-fuchsia-50: var(--tp-o-fuchsia-50);
+  --color-fuchsia-100: var(--tp-o-fuchsia-100);
+  --color-fuchsia-200: var(--tp-o-fuchsia-200);
+  --color-fuchsia-300: var(--tp-o-fuchsia-300);
+  --color-fuchsia-600: var(--tp-o-fuchsia-600);
+  --color-fuchsia-700: var(--tp-o-fuchsia-700);
+  --color-fuchsia-800: var(--tp-o-fuchsia-800);
+  --color-fuchsia-900: var(--tp-o-fuchsia-900);
+  --color-fuchsia-950: var(--tp-o-fuchsia-950);
+  --color-pink-50: var(--tp-o-pink-50);
+  --color-pink-100: var(--tp-o-pink-100);
+  --color-pink-200: var(--tp-o-pink-200);
+  --color-pink-300: var(--tp-o-pink-300);
+  --color-pink-600: var(--tp-o-pink-600);
+  --color-pink-700: var(--tp-o-pink-700);
+  --color-pink-800: var(--tp-o-pink-800);
+  --color-pink-900: var(--tp-o-pink-900);
+  --color-pink-950: var(--tp-o-pink-950);
+  --color-rose-50: var(--tp-o-rose-50);
+  --color-rose-100: var(--tp-o-rose-100);
+  --color-rose-200: var(--tp-o-rose-200);
+  --color-rose-300: var(--tp-o-rose-300);
+  --color-rose-600: var(--tp-o-rose-600);
+  --color-rose-700: var(--tp-o-rose-700);
+  --color-rose-800: var(--tp-o-rose-800);
+  --color-rose-900: var(--tp-o-rose-900);
+  --color-rose-950: var(--tp-o-rose-950);
+}
+
+/*
+ * Lớp phủ mờ của modal (`bg-slate-950/70`, `bg-slate-900/60`…) luôn tối; nội
+ * dung bên trong quay lại ánh xạ Dark mode để thẻ modal không bị chói.
+ */
+.dark body :is([class*="bg-slate-950/"], [class*="bg-slate-900/"]) {
+  --color-slate-900: var(--tp-o-slate-900);
+  --color-slate-950: var(--tp-o-slate-950);
+}
+
+.dark body :is([class*="bg-slate-950/"], [class*="bg-slate-900/"]) > :not(.text-white) {
+  --color-slate-900: #f1f5f9;
+  --color-slate-950: #f8fafc;
+}
+
+/* Bóng đổ màu slate sẽ thành "quầng sáng" ở Dark mode → đổi sang bóng đen. */
+.dark body [class*="shadow-slate-"] {
+  --tw-shadow-color: rgb(0 0 0 / 0.45);
+}
+
+/* Lớp phủ chào mừng dùng gradient hồng nhạt → bản tối tương ứng. */
+.dark .from-\[\#fdf2f8\]\/95 {
+  --tw-gradient-from: rgb(42 10 33 / 0.95);
+}
+
+.dark ::selection {
+  background-color: rgb(216 45 139 / 0.4);
+  color: #ffffff;
+}
+
+@layer utilities {
+  /* Chữ thương hiệu MoMo: đổi sắc theo theme (độ đặc hiệu thấp để các biến thể hover vẫn thắng). */
+  :where(.dark) .text-\[\#a50064\],
+  :where(.dark) .hover\:text-\[\#a50064\]:hover,
+  :where(.dark) .group:hover .group-hover\:text-\[\#a50064\] {
+    color: var(--tp-brand-text);
+  }
+}
+
+/* ===================================================================== */
+/* Mobile-first: vùng chạm tối thiểu 44px, thanh tab cuộn ngang          */
+/* ===================================================================== */
+@layer base {
+  @media (max-width: 639.98px) {
+    :where(
+        button,
+        [role="button"],
+        select,
+        textarea,
+        input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="hidden"], [type="color"])
+      ) {
+      min-height: 44px;
+    }
+
+    /* Giao diện mô phỏng kích thước nhỏ (vd màn hình điện thoại Người giám hộ). */
+    :where(.tp-dense) :where(button, [role="button"], select, textarea, input) {
+      min-height: 0;
+    }
+  }
+}
+
+@utility tp-scroll-x {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Bottom sheet trượt lên (điện thoại) / thẻ nổi trồi lên (laptop). */
+@keyframes tp-sheet-up {
+  from {
+    transform: translateY(28px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.tp-sheet-in {
+  animation: tp-sheet-up 0.28s ease-out;
+}
+
+/* Vòng sóng cảnh báo khi đang nghe cuộc gọi từ số lạ (Active Call Shield). */
+@keyframes tp-call-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(244, 63, 94, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(244, 63, 94, 0);
+  }
+}
+
+.tp-call-pulse {
+  animation: tp-call-pulse 1.6s ease-out infinite;
+}
+
+/* ===================================================================== */
+/* Hiệu ứng có sẵn từ vòng 1                                             */
+/* ===================================================================== */
 
 /* Banner cảnh báo bất thường chạy ngang màn hình Ops (2 bản sao nội dung → lặp liền mạch). */
 @keyframes tp-marquee {
@@ -79,7 +793,9 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .tp-marquee-track,
   .tp-scan-line,
-  .tp-highlight {
+  .tp-highlight,
+  .tp-sheet-in,
+  .tp-call-pulse {
     animation: none;
   }
 

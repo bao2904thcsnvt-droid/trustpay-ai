@@ -1,5 +1,8 @@
 import type {
+  AwsBreakerStates,
+  AwsCircuitState,
   AwsEngineMode,
+  AwsFallbackReason,
   AwsPipelineKind,
   AwsPipelineStep,
   AwsPipelineStepId,
@@ -19,6 +22,41 @@ import type {
 
 export const ENGINE_HEADER = "x-trustpay-engine";
 export const OCR_HEADER = "x-trustpay-ocr";
+export const BREAKER_HEADER = "x-trustpay-breaker";
+export const FALLBACK_HEADER = "x-trustpay-fallback";
+
+function isCircuitState(value: string | undefined): value is AwsCircuitState {
+  return value === "CLOSED" || value === "OPEN" || value === "HALF_OPEN";
+}
+
+/** Đọc header `bedrock=CLOSED;rekognition=CLOSED;translate=OPEN` (dữ liệu không tin cậy). */
+export function parseBreakerHeader(header: string | null): AwsBreakerStates | undefined {
+  if (!header) {
+    return undefined;
+  }
+  const states: Partial<AwsBreakerStates> = {};
+  for (const pair of header.split(";")) {
+    const [name, state] = pair.trim().split("=");
+    if ((name === "bedrock" || name === "rekognition" || name === "translate") && isCircuitState(state)) {
+      states[name] = state;
+    }
+  }
+  return states.bedrock && states.rekognition && states.translate
+    ? { bedrock: states.bedrock, rekognition: states.rekognition, translate: states.translate }
+    : undefined;
+}
+
+const FALLBACK_REASONS: readonly AwsFallbackReason[] = [
+  "no-credentials",
+  "circuit-open",
+  "timeout",
+  "aws-error",
+  "invalid-json",
+];
+
+export function parseFallbackHeader(header: string | null): AwsFallbackReason | undefined {
+  return FALLBACK_REASONS.find((reason) => reason === header);
+}
 
 type ServerTimings = Record<string, number>;
 
@@ -86,7 +124,16 @@ export function buildAnalyzeTrace(
         ]
       : [bedrockStep, { id: "biometric-policy", status: "local", latencyMs: null }, blacklistStep];
 
-  return { kind, engine, totalLatencyMs: totalLatencyMs, steps };
+  const breakers = parseBreakerHeader(headers.get(BREAKER_HEADER));
+  const fallbackReason = parseFallbackHeader(headers.get(FALLBACK_HEADER));
+  return {
+    kind,
+    engine,
+    totalLatencyMs: totalLatencyMs,
+    steps,
+    ...(breakers ? { breakers } : {}),
+    ...(fallbackReason ? { fallbackReason } : {}),
+  };
 }
 
 /** Ghi độ trễ đo được phía client cho một chặng (vd Biometric Policy). */

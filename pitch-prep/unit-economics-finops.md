@@ -1,6 +1,6 @@
 # TrustPay AI — Unit Economics & FinOps
 
-> **Phiên bản:** 1.0 · **Ngày:** 22/11/2026
+> **Phiên bản:** 1.1 · **Ngày:** 22/11/2026 · v1.1: sửa phép tính Translate (30.000 ký tự = 0,03 triệu ký tự) và bổ sung mục 1.4 Kịch bản tối ưu FinOps (khớp bảng "AWS Security & FinOps" và `lib/finops/unit-economics.ts`)
 > **Cảnh báo quan trọng:** Mọi đơn giá AWS dưới đây là **giả định mẫu để minh họa mô hình tính**, KHÔNG phải báo giá chính thức. Giá AWS thay đổi theo thời gian, region và cam kết sử dụng. Trước khi dùng cho quyết định tài chính, hãy thay bằng số từ **AWS Pricing Calculator** và hóa đơn thực tế của bạn. Mọi ô giá được đánh dấu `[GIẢ ĐỊNH]`.
 
 ## 1. Mô hình chi phí trên mỗi 1.000 giao dịch phân tích
@@ -40,21 +40,43 @@ Ký hiệu: N = 1.000 giao dịch.
 - **Bedrock output:** 600 × 350 = 210.000 token → 0,21 triệu × 15,00 = **3,150 USD**
 - **Rekognition DetectText:** 250 ảnh / 1.000 × 1,00 = **0,250 USD**
 - **Rekognition CompareFaces:** 80 ảnh / 1.000 × 1,00 = **0,080 USD**
-- **Translate:** 100 giao dịch × ~300 ký tự = 30.000 ký tự → 0,00003 triệu × 15,00 = **0,00045 USD** (≈ 0)
+- **Translate:** 100 giao dịch × ~300 ký tự = 30.000 ký tự → 0,03 triệu × 15,00 = **0,450 USD**
 - **Lambda compute:** 1.000 × 0,4 s × (1024/1024) GB = 400 GB-giây × 0,0000166667 = **0,00667 USD**
 - **Lambda + API requests:** 2.000 req / triệu × (0,20 + 1,00) = **0,0024 USD**
 - **DynamoDB:** 2.000 WRU / triệu × 1,25 = **0,0025 USD**
 
 | Khoản mục | Chi phí / 1.000 GD (USD) | Tỷ trọng |
 |---|---|---|
-| Bedrock (input + output) | 4,770 | ~92% |
+| Bedrock (input + output) | 4,770 | ~86% |
+| Translate | 0,450 | ~8% |
 | Rekognition (OCR + Face) | 0,330 | ~6% |
 | Lambda + API Gateway | 0,0091 | <1% |
 | DynamoDB | 0,0025 | <1% |
-| Translate | ~0 | ~0% |
-| **Tổng** | **≈ 5,11 USD / 1.000 GD** | 100% |
+| **Tổng** | **≈ 5,56 USD / 1.000 GD** | 100% |
 
-> **Chi phí biên ≈ 0,0051 USD/giao dịch (≈ 130 VNĐ/giao dịch)** theo giả định mẫu. Bedrock chi phối chi phí → đòn bẩy FinOps lớn nhất nằm ở tối ưu token.
+> **Chi phí biên baseline ≈ 0,0056 USD/giao dịch (≈ 139 VNĐ/giao dịch)** theo giả định mẫu. Bedrock chi phối chi phí → đòn bẩy FinOps lớn nhất nằm ở tối ưu token.
+
+### 1.4 Kịch bản tối ưu FinOps (con số hiển thị trên bảng "AWS Security & FinOps")
+
+Giữ nguyên đơn giá mẫu ở 1.2, thay đổi cách dùng:
+
+| Đòn bẩy | Giá trị | So với baseline |
+|---|---|---|
+| Định tuyến theo giá trị | 40% giao dịch gọi Bedrock | 60% |
+| Phân tầng mô hình | 80% Claude Haiku `[GIẢ ĐỊNH]` 0,80 / 4,00 USD mỗi triệu token vào / ra, 20% Sonnet | 100% Sonnet |
+| Prompt Caching | 2/3 token đầu vào là phần tĩnh, đọc cache tính 10% đơn giá → 360 token tương đương / lần gọi | 900 token |
+| JSON gọn, `max_tokens ≤ 1024` | ~250 token đầu ra | 350 token |
+| Chỉ dịch văn bản không phải tiếng Việt (đã áp dụng trong `/api/analyze`) | 2% giao dịch gọi Translate | 10% |
+
+Tính trên N = 1.000 giao dịch:
+
+- **Bedrock Haiku:** 320 lần × (360 × 0,80 + 250 × 4,00) / 1.000.000 = **0,412 USD**
+- **Bedrock Sonnet:** 80 lần × (360 × 3,00 + 250 × 15,00) / 1.000.000 = **0,386 USD**
+- **Rekognition (OCR + Face):** không đổi = **0,330 USD**
+- **Translate:** 20 giao dịch × 300 ký tự = 6.000 ký tự → **0,090 USD**
+- **Lambda + API Gateway + DynamoDB:** không đổi = **0,0116 USD**
+
+> **Tổng ≈ 1,23 USD / 1.000 GD ⇒ ≈ 0,0012 USD/giao dịch (≈ 31 VNĐ/giao dịch)**, giảm ~78% so với baseline. Công thức được mã hóa trong `lib/finops/unit-economics.ts` và kiểm thử ở kịch bản F25 (`npm run test:fraud`).
 
 ## 2. Đòn bẩy tối ưu chi phí (FinOps)
 
@@ -83,8 +105,8 @@ Ký hiệu: N = 1.000 giao dịch.
 - Số giao dịch lừa đảo: 1.000 × 0,2% = **2**
 - Số bị chặn: 2 × 70% = **1,4**
 - Thiệt hại ngăn được: 1,4 × 8.000.000 = **11.200.000 VNĐ ≈ 448 USD**
-- Chi phí AWS: **≈ 5,11 USD**
-- **ROI ≈ 448 / 5,11 ≈ 87×** (mỗi 1 USD chi cho hạ tầng AI bảo vệ ~87 USD giá trị rủi ro — theo giả định mẫu)
+- Chi phí AWS: **≈ 5,56 USD** (baseline) · **≈ 1,23 USD** (kịch bản FinOps 1.4)
+- **ROI ≈ 448 / 5,56 ≈ 81×** ở baseline, **≈ 364×** ở kịch bản FinOps (mỗi 1 USD chi cho hạ tầng AI bảo vệ ~81–364 USD giá trị rủi ro — theo giả định mẫu)
 
 > Ngay cả khi giảm mạnh các giả định (giá trị lừa đảo 3 triệu, tỷ lệ chặn 40%, tỷ lệ lừa đảo 0,1%), giá trị ngăn được vẫn ≈ 48 USD/1.000 GD, ROI ≈ 9× — vẫn dương rõ rệt.
 
@@ -102,7 +124,7 @@ AWS Budgets đặt cảnh báo ở 80% và dự báo 100% (xem `infra/lib/observ
 
 ## 5. Điểm hòa vốn & mở rộng
 
-- Với chi phí biên ~0,0051 USD/GD, ở **1 triệu giao dịch/tháng**, chi phí biến đổi ≈ **5.110 USD** + cố định ~210 USD.
+- Với chi phí biên ~0,0056 USD/GD (baseline), ở **1 triệu giao dịch/tháng**, chi phí biến đổi ≈ **5.560 USD** + cố định ~210 USD; với kịch bản FinOps 1.4 (~0,0012 USD/GD) còn ≈ **1.230 USD**.
 - Kiến trúc serverless (Lambda, DynamoDB on-demand) → **chi phí tỉ lệ thuận lưu lượng**, không trả cho công suất nhàn rỗi.
 - Khi đạt quy mô lớn, cân nhắc **Provisioned Throughput/Savings Plans** cho Lambda và cam kết Bedrock để giảm đơn giá.
 

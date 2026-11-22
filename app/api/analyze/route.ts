@@ -19,6 +19,18 @@ import type {
   TransactionAnalysisResponse,
 } from "@/types/trustpay";
 import { DEFAULT_BLACKLIST, DEFAULT_BUDGETS } from "@/lib/mock-scenarios";
+import {
+  AwsFallbackSignal,
+  breakerHeaderValue,
+  callAwsService,
+  classifyFallbackReason,
+  type AwsFallbackReasonCode,
+} from "@/lib/aws/service-breakers";
+import {
+  pickUnmaskedIdentity,
+  redactForPrompt,
+  redactJsonForPrompt,
+} from "@/lib/security/prompt-redaction";
 
 /**
  * Telemetry vận hành trả qua HTTP header (KHÔNG chèn vào JSON hợp đồng):
@@ -41,7 +53,8 @@ function buildTelemetryHeaders(
   engine: EngineMode,
   ocr: OcrMode,
   timings: StageTimings,
-  startedAt: number
+  startedAt: number,
+  fallbackReason?: AwsFallbackReasonCode
 ): Record<string, string> {
   const metrics: string[] = [];
   const push = (name: string, value: number | null) => {
@@ -58,9 +71,17 @@ function buildTelemetryHeaders(
   return {
     "x-trustpay-engine": engine,
     "x-trustpay-ocr": ocr,
+    // Trạng thái Circuit Breaker thật của từng dịch vụ AWS (Bedrock/Rekognition/Translate).
+    "x-trustpay-breaker": breakerHeaderValue(),
+    ...(fallbackReason ? { "x-trustpay-fallback": fallbackReason } : {}),
     "server-timing": metrics.join(", "),
     "cache-control": "no-store",
   };
+}
+
+/** Văn bản đã là tiếng Việt có dấu → không cần gọi Amazon Translate (FinOps). */
+function looksVietnamese(text: string): boolean {
+  return /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(text);
 }
 
 function formatNumber(n: number): string {
@@ -442,7 +463,8 @@ export async function POST(request: Request) {
     const region = process.env.AWS_REGION || "us-east-1";
 
     if (!accessKeyId || !secretAccessKey) {
-      throw new Error(
+      throw new AwsFallbackSignal(
+        "no-credentials",
         "Missing AWS credentials in environment variables - switching to Smart Fallback Engine"
       );
     }
@@ -469,10 +491,12 @@ export async function POST(request: Request) {
         );
         const imageBytes = Buffer.from(base64Clean, "base64");
 
-        const detectTextRes = await rekognition.send(
-          new DetectTextCommand({
-            Image: { Bytes: imageBytes },
-          })
+        const detectTextRes = await callAwsService("rekognition", () =>
+          rekognition.send(
+            new DetectTextCommand({
+              Image: { Bytes: imageBytes },
+            })
+          )
         );
 
         extractedImageText = (detectTextRes.TextDetections || [])
@@ -488,26 +512,30 @@ export async function POST(request: Request) {
       }
     }
 
-    // 2. Tích hợp Amazon Translate (chuẩn hóa / dịch thuật ngữ nếu cần)
+    // 2. Tích hợp Amazon Translate (chỉ khi văn bản chưa phải tiếng Việt — đòn bẩy FinOps)
     let translatedNote = "";
-    const translateStartedAt = performance.now();
-    try {
-      const translateClient = new TranslateClient({
-        region,
-        credentials: awsCredentials,
-      });
-      const translateRes = await translateClient.send(
-        new TranslateTextCommand({
-          Text: commandText.slice(0, 500) || "Transaction check",
-          SourceLanguageCode: "auto",
-          TargetLanguageCode: "vi",
-        })
-      );
-      translatedNote = translateRes.TranslatedText || "";
-    } catch {
-      // Không chặn luồng chính nếu Translate không khả dụng
-    } finally {
-      timings.translate = performance.now() - translateStartedAt;
+    if (commandText.trim() && !looksVietnamese(commandText)) {
+      const translateStartedAt = performance.now();
+      try {
+        const translateClient = new TranslateClient({
+          region,
+          credentials: awsCredentials,
+        });
+        const translateRes = await callAwsService("translate", () =>
+          translateClient.send(
+            new TranslateTextCommand({
+              Text: commandText.slice(0, 500),
+              SourceLanguageCode: "auto",
+              TargetLanguageCode: "vi",
+            })
+          )
+        );
+        translatedNote = translateRes.TranslatedText || "";
+      } catch {
+        // Không chặn luồng chính nếu Translate không khả dụng
+      } finally {
+        timings.translate = performance.now() - translateStartedAt;
+      }
     }
 
     // 3. Gọi Amazon Bedrock Runtime (Claude 3.5 Sonnet) để phân tích giao dịch
@@ -527,30 +555,42 @@ export async function POST(request: Request) {
     );
     timings.rules = performance.now() - rulesStartedAt;
 
+    // NĐ 13/2023/NĐ-CP: che CCCD / SĐT / STK trước khi dữ liệu rời biên tin cậy sang
+    // Bedrock. Bộ luật ở trên đã chạy trên dữ liệu gốc (trong RAM); ảnh base64 bị loại
+    // khỏi JSON tham chiếu để không gửi ảnh thô và tiết kiệm token.
+    const promptCommand = redactForPrompt(commandText).text;
+    const promptOcr = redactForPrompt(extractedImageText).text;
+    const promptTranslated = redactForPrompt(translatedNote).text;
+    const promptBlacklist = JSON.stringify(redactJsonForPrompt(blacklist));
+    const promptBaseline = JSON.stringify(redactJsonForPrompt(fallbackBaseline));
+
     const prompt = `Bạn là hệ thống AI chống lừa đảo tài chính TrustPay AI.
 Hãy phân tích giao dịch sau và trả về DUY NHẤT một chuỗi JSON hợp lệ theo đúng cấu trúc TransactionAnalysisResponse.
-Câu lệnh giao dịch: "${commandText}"
-Văn bản OCR từ ảnh đính kèm: "${extractedImageText}"
-Bản dịch hỗ trợ: "${translatedNote}"
-Danh sách đen (Blacklist): ${JSON.stringify(blacklist)}
+Lưu ý: số CCCD, số điện thoại và số tài khoản đã được che bằng ký tự * theo Nghị định 13/2023/NĐ-CP.
+Câu lệnh giao dịch: "${promptCommand}"
+Văn bản OCR từ ảnh đính kèm: "${promptOcr}"
+Bản dịch hỗ trợ: "${promptTranslated}"
+Danh sách đen (Blacklist): ${promptBlacklist}
 Ngân sách hiện tại: ${JSON.stringify(currentBudgets)}
 
 Yêu cầu trả về JSON mẫu tham chiếu:
-${JSON.stringify(fallbackBaseline)}`;
+${promptBaseline}`;
 
     const bedrockStartedAt = performance.now();
-    const invokeRes = await bedrock.send(
-      new InvokeModelCommand({
-        modelId,
-        contentType: "application/json",
-        accept: "application/json",
-        body: JSON.stringify({
-          anthropic_version: "bedrock-2023-05-31",
-          max_tokens: 1024,
-          temperature: 0.1,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      })
+    const invokeRes = await callAwsService("bedrock", () =>
+      bedrock.send(
+        new InvokeModelCommand({
+          modelId,
+          contentType: "application/json",
+          accept: "application/json",
+          body: JSON.stringify({
+            anthropic_version: "bedrock-2023-05-31",
+            max_tokens: 1024,
+            temperature: 0.1,
+            messages: [{ role: "user", content: prompt }],
+          }),
+        })
+      )
     );
     timings.bedrock = performance.now() - bedrockStartedAt;
 
@@ -569,7 +609,8 @@ ${JSON.stringify(fallbackBaseline)}`;
           typeof aiResponse.parsedAmount === "number"
             ? aiResponse.parsedAmount
             : fallbackBaseline.parsedAmount,
-        recipient: aiResponse.recipient || fallbackBaseline.recipient,
+        // Prompt đã che PII → định danh người nhận lấy từ bộ luật khi AI trả về bản bị che.
+        recipient: pickUnmaskedIdentity(aiResponse.recipient, fallbackBaseline.recipient),
         category: aiResponse.category || fallbackBaseline.category,
         budgetAlert: aiResponse.budgetAlert || fallbackBaseline.budgetAlert,
         scamReport: aiResponse.scamReport || fallbackBaseline.scamReport,
@@ -577,8 +618,22 @@ ${JSON.stringify(fallbackBaseline)}`;
           typeof aiResponse.requireBiometric === "boolean"
             ? aiResponse.requireBiometric
             : fallbackBaseline.requireBiometric,
-        fintechOpsTicket:
-          aiResponse.fintechOpsTicket || fallbackBaseline.fintechOpsTicket,
+        fintechOpsTicket: aiResponse.fintechOpsTicket
+          ? {
+              ...fallbackBaseline.fintechOpsTicket,
+              ...aiResponse.fintechOpsTicket,
+              // Định danh kỹ thuật & ảnh bằng chứng luôn lấy từ máy chủ (AI không thấy bản gốc).
+              ticketId: fallbackBaseline.fintechOpsTicket.ticketId,
+              timestamp: fallbackBaseline.fintechOpsTicket.timestamp,
+              recipient: pickUnmaskedIdentity(
+                aiResponse.fintechOpsTicket.recipient,
+                fallbackBaseline.fintechOpsTicket.recipient
+              ),
+              ...(fallbackBaseline.fintechOpsTicket.evidenceImageBase64
+                ? { evidenceImageBase64: fallbackBaseline.fintechOpsTicket.evidenceImageBase64 }
+                : {}),
+            }
+          : fallbackBaseline.fintechOpsTicket,
       };
 
       return NextResponse.json(mergedResponse, {
@@ -590,9 +645,10 @@ ${JSON.stringify(fallbackBaseline)}`;
     // Bedrock không trả JSON dùng được → kết quả là baseline của bộ luật (dự phòng).
     return NextResponse.json(fallbackBaseline, {
       status: 200,
-      headers: buildTelemetryHeaders("offline-heuristic", ocrMode, timings, startedAt),
+      headers: buildTelemetryHeaders("offline-heuristic", ocrMode, timings, startedAt, "invalid-json"),
     });
-  } catch {
+  } catch (error) {
+    const fallbackReason = classifyFallbackReason(error);
     // Fallback thông minh khi thiếu AWS_ACCESS_KEY_ID hoặc AWS API báo lỗi
     const rulesStartedAt = performance.now();
     const fallbackResponse = buildSmartFallbackAnalysis(
@@ -612,7 +668,7 @@ ${JSON.stringify(fallbackBaseline)}`;
 
     return NextResponse.json(fallbackResponse, {
       status: 200,
-      headers: buildTelemetryHeaders("offline-heuristic", ocrMode, timings, startedAt),
+      headers: buildTelemetryHeaders("offline-heuristic", ocrMode, timings, startedAt, fallbackReason),
     });
   }
 }

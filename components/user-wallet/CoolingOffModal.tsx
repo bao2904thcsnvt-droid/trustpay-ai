@@ -151,9 +151,14 @@ export default function CoolingOffModal({
       aria-modal="true"
       aria-labelledby="tp-cooling-title"
       aria-describedby="tp-cooling-desc"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-sm sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm sm:items-center sm:p-4 lg:items-end lg:justify-end lg:bg-slate-950/35 lg:p-6"
     >
-      <div className="relative flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-sky-200/60 bg-white shadow-2xl shadow-slate-950/40">
+      {/* Điện thoại: bottom sheet • Tablet: modal giữa • Laptop: thẻ nổi góc phải dưới */}
+      <div className="tp-sheet-in relative flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-t-3xl border border-sky-200/60 bg-white shadow-2xl shadow-slate-950/40 sm:max-h-[94vh] sm:rounded-3xl lg:max-h-[calc(100dvh-7rem)] lg:max-w-4xl">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1.5 left-1/2 z-10 h-1 w-10 -translate-x-1/2 rounded-full bg-white/50 sm:hidden"
+        />
         {/* Header */}
         <div className="flex flex-wrap items-start justify-between gap-3 bg-gradient-to-r from-sky-900 via-indigo-900 to-slate-900 px-5 py-4 text-white sm:px-6">
           <div className="min-w-0">

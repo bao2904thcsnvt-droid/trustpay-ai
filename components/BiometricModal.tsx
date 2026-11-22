@@ -177,9 +177,9 @@ export default function BiometricModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="biometric-modal-title"
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-xs"
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/65 p-0 backdrop-blur-xs sm:items-center sm:p-4"
     >
-      <div className="relative max-h-[94vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-pink-200/80 bg-white shadow-2xl shadow-slate-950/30">
+      <div className="tp-sheet-in relative max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-pink-200/80 bg-white shadow-2xl shadow-slate-950/30 sm:max-h-[94vh] sm:rounded-3xl">
         {/* Header */}
         <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-[#a50064] to-[#d82d8b] px-6 py-4 text-white">
           <div className="flex items-center gap-3">

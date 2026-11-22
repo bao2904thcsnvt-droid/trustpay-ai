@@ -1,5 +1,6 @@
 import type { AppLanguage, ShopSignalCode } from "@/types/trustpay";
 import { DEMO_SCENARIOS } from "@/lib/mock-scenarios";
+import { enExt, viExt, type ExtMessages } from "@/lib/i18n/messages-ext";
 
 /**
  * Từ điển giao diện VI/EN của TrustPay AI. Bản tiếng Anh dùng chung kiểu
@@ -82,7 +83,7 @@ const enShopSignals: ShopSignalTexts = {
   INVALID_TARGET: () => "Could not recognise a valid link or store name",
 };
 
-const vi = {
+const viCore = {
   common: {
     appName: "TrustPay AI",
     awsBadge: "AWS Serverless Powered",
@@ -599,9 +600,12 @@ const vi = {
   },
 };
 
+/** Vòng 2: trộn từ điển bổ sung (theme, hướng dẫn, VietQR, Call Shield, Copilot, FinOps). */
+const vi = { ...viCore, ...viExt };
+
 export type Messages = typeof vi;
 
-const en: Messages = {
+const enCore: Omit<Messages, keyof ExtMessages> = {
   common: {
     appName: "TrustPay AI",
     awsBadge: "AWS Serverless Powered",
@@ -1113,5 +1117,7 @@ const en: Messages = {
     reportDownloaded: "Transaction protection report downloaded (.txt)",
   },
 };
+
+const en: Messages = { ...enCore, ...enExt };
 
 export const MESSAGES: Record<AppLanguage, Messages> = { vi, en };

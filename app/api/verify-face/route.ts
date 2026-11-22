@@ -5,7 +5,23 @@ import {
 } from "@aws-sdk/client-rekognition";
 import type { VerifyFaceRequest, VerifyFaceResponse } from "@/types/trustpay";
 
+/**
+ * Telemetry vận hành qua HTTP header (không chèn vào JSON hợp đồng):
+ * `x-trustpay-engine` = `rekognition` | `offline-heuristic`, kèm `server-timing`.
+ */
+function faceTelemetryHeaders(
+  engine: "rekognition" | "offline-heuristic",
+  startedAt: number
+): Record<string, string> {
+  return {
+    "x-trustpay-engine": engine,
+    "server-timing": `rekognition;dur=${(performance.now() - startedAt).toFixed(1)}`,
+    "cache-control": "no-store",
+  };
+}
+
 export async function POST(request: Request) {
+  const startedAt = performance.now();
   let body: VerifyFaceRequest = { selfieBase64: "" };
   try {
     body = (await request.json()) as VerifyFaceRequest;
@@ -63,7 +79,10 @@ export async function POST(request: Request) {
         : "Khuôn mặt không khớp với hồ sơ sinh trắc học đã đăng ký.",
     };
 
-    return NextResponse.json(response, { status: 200 });
+    return NextResponse.json(response, {
+      status: 200,
+      headers: faceTelemetryHeaders("rekognition", startedAt),
+    });
   } catch {
     const fallbackResponse: VerifyFaceResponse = {
       matched: true,
@@ -72,6 +91,9 @@ export async function POST(request: Request) {
         "Xác thực sinh trắc học AWS Rekognition thành công (Demo Mode)",
     };
 
-    return NextResponse.json(fallbackResponse, { status: 200 });
+    return NextResponse.json(fallbackResponse, {
+      status: 200,
+      headers: faceTelemetryHeaders("offline-heuristic", startedAt),
+    });
   }
 }

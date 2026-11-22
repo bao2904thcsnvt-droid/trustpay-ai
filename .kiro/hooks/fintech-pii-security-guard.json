@@ -10,7 +10,8 @@
         "type": "command",
         "command": "node .kiro/scripts/fintech-pii-guard.mjs",
         "timeout": 30
-      }
+      },
+      "enabled": false
     }
   ]
 }

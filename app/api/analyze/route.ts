@@ -20,6 +20,49 @@ import type {
 } from "@/types/trustpay";
 import { DEFAULT_BLACKLIST, DEFAULT_BUDGETS } from "@/lib/mock-scenarios";
 
+/**
+ * Telemetry vận hành trả qua HTTP header (KHÔNG chèn vào JSON hợp đồng):
+ *  - `x-trustpay-engine`: `bedrock` | `offline-heuristic`
+ *  - `x-trustpay-ocr`: `none` | `rekognition` | `error` | `offline-heuristic`
+ *  - `server-timing`: thời gian từng chặng (ocr, translate, bedrock, rules, total)
+ * Giao diện dùng để hiển thị luồng công nghệ AWS + độ trễ thực tế.
+ */
+type EngineMode = "bedrock" | "offline-heuristic";
+type OcrMode = "none" | "rekognition" | "error" | "offline-heuristic";
+
+interface StageTimings {
+  ocr: number | null;
+  translate: number | null;
+  bedrock: number | null;
+  rules: number | null;
+}
+
+function buildTelemetryHeaders(
+  engine: EngineMode,
+  ocr: OcrMode,
+  timings: StageTimings,
+  startedAt: number
+): Record<string, string> {
+  const metrics: string[] = [];
+  const push = (name: string, value: number | null) => {
+    if (value !== null && Number.isFinite(value)) {
+      metrics.push(`${name};dur=${value.toFixed(1)}`);
+    }
+  };
+  push("ocr", timings.ocr);
+  push("translate", timings.translate);
+  push("bedrock", timings.bedrock);
+  push("rules", timings.rules);
+  push("total", performance.now() - startedAt);
+
+  return {
+    "x-trustpay-engine": engine,
+    "x-trustpay-ocr": ocr,
+    "server-timing": metrics.join(", "),
+    "cache-control": "no-store",
+  };
+}
+
 function formatNumber(n: number): string {
   return new Intl.NumberFormat("vi-VN").format(Math.abs(Math.round(n)));
 }
@@ -108,8 +151,16 @@ function parseRecipientFromText(text: string, blacklist: string[]): string {
   return "Người nhận chưa xác định";
 }
 
-function detectCategory(text: string): CategoryName {
+/**
+ * Phân loại danh mục theo từ khóa. Nhận biết ngân sách người dùng đang theo dõi:
+ *  - `Hóa đơn` chỉ được trả về khi ngân sách có danh mục này (Ví v1.1).
+ *  - Nhóm di chuyển quy về `Khác` khi ngân sách không theo dõi `Di chuyển`,
+ *    khớp với cách bộ luật chọn ngân sách dự phòng `Khác`.
+ * Với `DEFAULT_BUDGETS` (bộ test), hành vi giữ nguyên như trước.
+ */
+function detectCategory(text: string, budgets: BudgetCategory[]): CategoryName {
   const lower = text.toLowerCase();
+  const tracks = (name: CategoryName) => budgets.some((b) => b.name === name);
 
   if (
     /bún|phở|cơm|ăn|uống|cafe|cà phê|trà sữa|quán|nhà hàng|buffet|lẩu|nướng|bánh|đồ ăn|food|grabfood|shopee\s*food/.test(
@@ -128,11 +179,20 @@ function detectCategory(text: string): CategoryName {
   }
 
   if (
+    tracks("Hóa đơn") &&
+    /hóa đơn|hoá đơn|tiền điện|tiền nước|điện lực|evn|nước sạch|sawaco|cấp nước|cước|internet|wifi|4g|5g|truyền hình|netflix|spotify|youtube premium|icloud|gói cước|trả sau|học phí|phí chung cư|phí quản lý/.test(
+      lower
+    )
+  ) {
+    return "Hóa đơn";
+  }
+
+  if (
     /xe|grab|be\b|taxi|xăng|vé|tàu|máy bay|di chuyển|đi lại|gửi xe|trạm thu phí|bus/.test(
       lower
     )
   ) {
-    return "Di chuyển";
+    return tracks("Di chuyển") || !tracks("Khác") ? "Di chuyển" : "Khác";
   }
 
   return "Khác";
@@ -159,7 +219,7 @@ function buildSmartFallbackAnalysis(
 
   const parsedAmount = parseAmountFromText(fullText);
   const recipient = parseRecipientFromText(fullText, blacklist);
-  const category = detectCategory(fullText);
+  const category = detectCategory(fullText, budgets);
 
   // Tính toán ngân sách
   const matchedBudget =
@@ -343,6 +403,15 @@ function buildSmartFallbackAnalysis(
 }
 
 export async function POST(request: Request) {
+  const startedAt = performance.now();
+  const timings: StageTimings = {
+    ocr: null,
+    translate: null,
+    bedrock: null,
+    rules: null,
+  };
+  let ocrMode: OcrMode = "none";
+
   let body: TransactionAnalysisRequest;
   try {
     body = (await request.json()) as TransactionAnalysisRequest;
@@ -388,6 +457,7 @@ export async function POST(request: Request) {
 
     // 1. Nếu có imageBase64, gọi Amazon Rekognition DetectText để đọc chữ trên ảnh hóa đơn / tin nhắn
     if (body.imageBase64) {
+      const ocrStartedAt = performance.now();
       try {
         const rekognition = new RekognitionClient({
           region,
@@ -409,13 +479,18 @@ export async function POST(request: Request) {
           .filter((d) => d.Type === "LINE" && d.DetectedText)
           .map((d) => d.DetectedText)
           .join(" ");
+        ocrMode = "rekognition";
       } catch {
         // Bỏ qua lỗi OCR lẻ và tiếp tục phân tích bằng text
+        ocrMode = "error";
+      } finally {
+        timings.ocr = performance.now() - ocrStartedAt;
       }
     }
 
     // 2. Tích hợp Amazon Translate (chuẩn hóa / dịch thuật ngữ nếu cần)
     let translatedNote = "";
+    const translateStartedAt = performance.now();
     try {
       const translateClient = new TranslateClient({
         region,
@@ -431,6 +506,8 @@ export async function POST(request: Request) {
       translatedNote = translateRes.TranslatedText || "";
     } catch {
       // Không chặn luồng chính nếu Translate không khả dụng
+    } finally {
+      timings.translate = performance.now() - translateStartedAt;
     }
 
     // 3. Gọi Amazon Bedrock Runtime (Claude 3.5 Sonnet) để phân tích giao dịch
@@ -443,10 +520,12 @@ export async function POST(request: Request) {
       process.env.BEDROCK_MODEL_ID ||
       "anthropic.claude-3-5-sonnet-20240620-v1:0";
 
+    const rulesStartedAt = performance.now();
     const fallbackBaseline = buildSmartFallbackAnalysis(
       { ...body, currentBudgets, blacklist },
       extractedImageText
     );
+    timings.rules = performance.now() - rulesStartedAt;
 
     const prompt = `Bạn là hệ thống AI chống lừa đảo tài chính TrustPay AI.
 Hãy phân tích giao dịch sau và trả về DUY NHẤT một chuỗi JSON hợp lệ theo đúng cấu trúc TransactionAnalysisResponse.
@@ -459,6 +538,7 @@ Ngân sách hiện tại: ${JSON.stringify(currentBudgets)}
 Yêu cầu trả về JSON mẫu tham chiếu:
 ${JSON.stringify(fallbackBaseline)}`;
 
+    const bedrockStartedAt = performance.now();
     const invokeRes = await bedrock.send(
       new InvokeModelCommand({
         modelId,
@@ -472,6 +552,7 @@ ${JSON.stringify(fallbackBaseline)}`;
         }),
       })
     );
+    timings.bedrock = performance.now() - bedrockStartedAt;
 
     const rawBody = new TextDecoder().decode(invokeRes.body);
     const parsedBedrock = JSON.parse(rawBody);
@@ -500,12 +581,20 @@ ${JSON.stringify(fallbackBaseline)}`;
           aiResponse.fintechOpsTicket || fallbackBaseline.fintechOpsTicket,
       };
 
-      return NextResponse.json(mergedResponse, { status: 200 });
+      return NextResponse.json(mergedResponse, {
+        status: 200,
+        headers: buildTelemetryHeaders("bedrock", ocrMode, timings, startedAt),
+      });
     }
 
-    return NextResponse.json(fallbackBaseline, { status: 200 });
+    // Bedrock không trả JSON dùng được → kết quả là baseline của bộ luật (dự phòng).
+    return NextResponse.json(fallbackBaseline, {
+      status: 200,
+      headers: buildTelemetryHeaders("offline-heuristic", ocrMode, timings, startedAt),
+    });
   } catch {
     // Fallback thông minh khi thiếu AWS_ACCESS_KEY_ID hoặc AWS API báo lỗi
+    const rulesStartedAt = performance.now();
     const fallbackResponse = buildSmartFallbackAnalysis(
       {
         commandText,
@@ -515,7 +604,15 @@ ${JSON.stringify(fallbackBaseline)}`;
       },
       extractedImageText
     );
+    timings.rules = performance.now() - rulesStartedAt;
+    timings.bedrock = null;
+    if (body.imageBase64 && ocrMode === "none") {
+      ocrMode = "offline-heuristic";
+    }
 
-    return NextResponse.json(fallbackResponse, { status: 200 });
+    return NextResponse.json(fallbackResponse, {
+      status: 200,
+      headers: buildTelemetryHeaders("offline-heuristic", ocrMode, timings, startedAt),
+    });
   }
 }

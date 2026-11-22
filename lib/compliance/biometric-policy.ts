@@ -13,7 +13,9 @@ import type { RiskLevel } from "@/types/trustpay";
  */
 
 function readVndThreshold(name: string, fallback: number): number {
-  const raw = process.env[name];
+  // Module cũng được Client Component dùng (Ví áp chính sách ngay trên trình duyệt):
+  // không giả định `process` luôn tồn tại; thiếu biến môi trường → giữ ngưỡng mặc định.
+  const raw = typeof process !== "undefined" ? process.env?.[name] : undefined;
   if (raw === undefined) {
     return fallback;
   }

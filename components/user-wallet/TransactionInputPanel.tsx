@@ -14,20 +14,32 @@ import {
   Wand2,
 } from "lucide-react";
 import { DEMO_SCENARIOS, type DemoScenario } from "@/lib/mock-scenarios";
+import { expandBlacklistForText } from "@/lib/wallet/blacklist-patterns";
+import { requestTransactionAnalysis } from "@/lib/aws/pipeline-trace";
+import { useI18n } from "@/components/i18n/I18nProvider";
 import type {
+  AwsPipelineTrace,
   BudgetCategory,
   TransactionAnalysisRequest,
   TransactionAnalysisResponse,
 } from "@/types/trustpay";
 
+export interface TransactionAnalysisMeta {
+  commandText: string;
+  imageBase64?: string;
+  trace: AwsPipelineTrace;
+}
+
 export interface TransactionInputPanelProps {
   budgets: BudgetCategory[];
   blacklist: string[];
-  onAnalysisComplete: (
-    result: TransactionAnalysisResponse,
-    meta: { commandText: string; imageBase64?: string }
-  ) => void;
+  onAnalysisComplete: (result: TransactionAnalysisResponse, meta: TransactionAnalysisMeta) => void;
   onAnalyzingChange?: (isAnalyzing: boolean) => void;
+  /** Lệnh điền sẵn (vd từ Tour hướng dẫn). Panel được remount bằng `key` khi đổi. */
+  initialCommandText?: string;
+  initialScenarioId?: string | null;
+  /** Kịch bản cần làm nổi bật (Tour bước 1). */
+  highlightScenarioId?: string | null;
 }
 
 function getScenarioStyle(scenario: DemoScenario, isSelected: boolean) {
@@ -68,11 +80,15 @@ export default function TransactionInputPanel({
   blacklist,
   onAnalysisComplete,
   onAnalyzingChange,
+  initialCommandText = "",
+  initialScenarioId = null,
+  highlightScenarioId = null,
 }: TransactionInputPanelProps) {
-  const [commandText, setCommandText] = useState("");
+  const { t } = useI18n();
+  const [commandText, setCommandText] = useState(initialCommandText);
   const [imageBase64, setImageBase64] = useState<string | undefined>(undefined);
   const [imageName, setImageName] = useState<string>("");
-  const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
+  const [activeScenarioId, setActiveScenarioId] = useState<string | null>(initialScenarioId);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -89,12 +105,12 @@ export default function TransactionInputPanel({
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setErrorMsg("Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WebP...).");
+      setErrorMsg(t.transfer.errorInvalidFile);
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setErrorMsg("Kích thước ảnh tối đa 5MB để đảm bảo phân tích nhanh.");
+      setErrorMsg(t.transfer.errorFileTooLarge);
       return;
     }
 
@@ -123,9 +139,7 @@ export default function TransactionInputPanel({
 
     const trimmed = commandText.trim();
     if (!trimmed && !imageBase64) {
-      setErrorMsg(
-        "Vui lòng nhập lệnh chuyển tiền hoặc tải lên ảnh hóa đơn / tin nhắn nghi vấn."
-      );
+      setErrorMsg(t.transfer.errorEmpty);
       return;
     }
 
@@ -138,27 +152,17 @@ export default function TransactionInputPanel({
         commandText: trimmed,
         ...(imageBase64 ? { imageBase64 } : {}),
         currentBudgets: budgets,
-        blacklist,
+        // Nở các mục cụm (vd 1903xxxx) thành STK cụ thể có trong lệnh — hợp đồng API giữ nguyên.
+        blacklist: expandBlacklistForText(blacklist, trimmed),
       };
 
-      const response = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Lỗi kết nối máy chủ phân tích (${response.status})`);
-      }
-
-      const data = (await response.json()) as TransactionAnalysisResponse;
-      onAnalysisComplete(data, { commandText: trimmed, imageBase64 });
-    } catch (err) {
-      setErrorMsg(
-        err instanceof Error
-          ? err.message
-          : "Không thể phân tích giao dịch lúc này. Vui lòng thử lại."
+      const { result, trace } = await requestTransactionAnalysis(
+        payload,
+        imageBase64 ? "IMAGE_EVIDENCE" : "CONTEXT_CHECK",
       );
+      onAnalysisComplete(result, { commandText: trimmed, imageBase64, trace });
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? t.transfer.errorServer(err.message) : t.transfer.errorGeneric);
     } finally {
       setIsAnalyzing(false);
       onAnalyzingChange?.(false);
@@ -174,27 +178,20 @@ export default function TransactionInputPanel({
             <Wand2 className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-slate-900">
-              Chuyển tiền thông minh &amp; Quét Lá chắn AI
-            </h2>
-            <p className="text-xs text-slate-500">
-              Nhập câu lệnh tự nhiên hoặc đính kèm ảnh hóa đơn / tin nhắn nghi
-              vấn để AI kiểm tra trước khi chuyển
-            </p>
+            <h2 className="text-base font-bold text-slate-900">{t.transfer.title}</h2>
+            <p className="text-xs text-slate-500">{t.transfer.subtitle}</p>
           </div>
         </div>
       </div>
 
       {/* Hàng 4 nút kịch bản Demo 1-click */}
       <div className="mb-5">
-        <div className="mb-2.5 flex items-center justify-between">
+        <div className="mb-2.5 flex flex-wrap items-center justify-between gap-1">
           <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
             <Sparkles className="h-3.5 w-3.5 text-[#a50064]" />
-            Kịch bản Demo nhanh (1-click cho Ban Giám Khảo)
+            {t.transfer.scenariosTitle}
           </span>
-          <span className="text-[11px] text-slate-400">
-            Chọn để tự động điền lệnh
-          </span>
+          <span className="text-[11px] text-slate-400">{t.transfer.scenariosHint}</span>
         </div>
 
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -202,6 +199,12 @@ export default function TransactionInputPanel({
             const isSelected = activeScenarioId === scenario.id;
             const style = getScenarioStyle(scenario, isSelected);
             const Icon = style.Icon;
+            const text = t.transfer.scenarios[scenario.id] ?? {
+              label: scenario.label,
+              badge: scenario.badge,
+              description: scenario.description,
+            };
+            const isHighlighted = highlightScenarioId === scenario.id;
 
             return (
               <button
@@ -209,22 +212,20 @@ export default function TransactionInputPanel({
                 type="button"
                 disabled={isAnalyzing}
                 onClick={() => handleSelectScenario(scenario)}
-                className={`group flex cursor-pointer flex-col items-start rounded-2xl border p-3 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60 ${style.card}`}
+                className={`group flex cursor-pointer flex-col items-start rounded-2xl border p-3 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60 ${style.card} ${
+                  isHighlighted ? "tp-highlight" : ""
+                }`}
               >
                 <div className="flex w-full items-center justify-between gap-2">
                   <span className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
                     <Icon className={`h-3.5 w-3.5 shrink-0 ${style.iconColor}`} />
-                    <span className="line-clamp-1">{scenario.label}</span>
+                    <span className="line-clamp-1">{text.label}</span>
                   </span>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${style.badge}`}
-                  >
-                    {scenario.badge}
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${style.badge}`}>
+                    {text.badge}
                   </span>
                 </div>
-                <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-slate-600">
-                  {scenario.description}
-                </p>
+                <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-slate-600">{text.description}</p>
               </button>
             );
           })}
@@ -234,17 +235,15 @@ export default function TransactionInputPanel({
       {/* Form nhập liệu */}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="relative">
-          <label
-            htmlFor="trustpay-command-input"
-            className="mb-1.5 block text-xs font-semibold text-slate-700"
-          >
-            Lệnh chuyển tiền bằng ngôn ngữ tự nhiên
+          <label htmlFor="trustpay-command-input" className="mb-1.5 block text-xs font-semibold text-slate-700">
+            {t.transfer.inputLabel}
           </label>
           <textarea
             id="trustpay-command-input"
             rows={3}
             value={commandText}
             disabled={isAnalyzing}
+            maxLength={2000}
             onChange={(e) => {
               setCommandText(e.target.value);
               setActiveScenarioId(null);
@@ -256,8 +255,8 @@ export default function TransactionInputPanel({
                 void handleSubmit();
               }
             }}
-            placeholder='Ví dụ: "Chuyển 45.000đ tiền bún bò cho Quán Cô Ba" hoặc dán nội dung tin nhắn yêu cầu chuyển khoản...'
-            className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 transition-all focus:border-[#d82d8b] focus:bg-white focus:ring-4 focus:ring-pink-100 focus:outline-none disabled:opacity-60"
+            placeholder={t.transfer.placeholder}
+            className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-sm text-slate-900 transition-all placeholder:text-slate-400 focus:border-[#d82d8b] focus:bg-white focus:ring-4 focus:ring-pink-100 focus:outline-none disabled:opacity-60"
           />
         </div>
 
@@ -280,38 +279,32 @@ export default function TransactionInputPanel({
               className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3.5 py-2 text-xs font-semibold text-[#a50064] transition-all hover:border-[#d82d8b] hover:bg-pink-100/80 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <ImagePlus className="h-4 w-4" />
-              <span>Tải ảnh / Chụp hóa đơn &amp; tin nhắn</span>
+              <span>{t.transfer.upload}</span>
             </button>
 
-            {!imageBase64 && (
-              <span className="hidden text-xs text-slate-400 sm:inline">
-                Hỗ trợ OCR qua Amazon Rekognition (PNG, JPG &le; 5MB)
-              </span>
-            )}
+            {!imageBase64 && <span className="hidden text-xs text-slate-400 sm:inline">{t.transfer.uploadHint}</span>}
           </div>
 
-          {/* Preview ảnh nhỏ */}
           {imageBase64 && (
             <div className="flex items-center gap-2.5 rounded-xl border border-pink-200 bg-white py-1.5 pr-2 pl-1.5 shadow-2xs">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={imageBase64}
-                alt="Ảnh hóa đơn hoặc tin nhắn đính kèm"
+                alt={t.transfer.imageAlt}
                 className="h-10 w-10 rounded-lg object-cover ring-1 ring-slate-200"
               />
               <div className="max-w-36">
                 <p className="flex items-center gap-1 truncate text-xs font-semibold text-slate-800">
                   <FileImage className="h-3 w-3 shrink-0 text-[#a50064]" />
-                  <span className="truncate">{imageName || "Ảnh đính kèm"}</span>
+                  <span className="truncate">{imageName || t.transfer.imageAttached}</span>
                 </p>
-                <p className="text-[10px] text-emerald-600 font-medium">
-                  Đã sẵn sàng quét OCR
-                </p>
+                <p className="text-[10px] font-medium text-emerald-600">{t.transfer.imageReady}</p>
               </div>
               <button
                 type="button"
                 onClick={handleRemoveImage}
-                title="Xóa ảnh đính kèm"
+                title={t.transfer.removeImage}
+                aria-label={t.transfer.removeImage}
                 className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
               >
                 <X className="h-4 w-4" />
@@ -320,7 +313,6 @@ export default function TransactionInputPanel({
           )}
         </div>
 
-        {/* Thông báo lỗi nếu có */}
         {errorMsg && (
           <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-700">
             <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -328,11 +320,17 @@ export default function TransactionInputPanel({
           </div>
         )}
 
-        {/* Nút gửi phân tích */}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-[11px] text-slate-400">
-            Mẹo: Nhấn <kbd className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600">Ctrl</kbd> +{" "}
-            <kbd className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600">Enter</kbd> để gửi nhanh
+            {t.transfer.tipPrefix}{" "}
+            <kbd className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600">
+              Ctrl
+            </kbd>{" "}
+            +{" "}
+            <kbd className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600">
+              Enter
+            </kbd>{" "}
+            {t.transfer.tipSuffix}
           </p>
 
           <button
@@ -343,12 +341,12 @@ export default function TransactionInputPanel({
             {isAnalyzing ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Lá chắn AI đang phân tích rủi ro...</span>
+                <span>{t.transfer.analyzing}</span>
               </>
             ) : (
               <>
                 <Send className="h-4 w-4" />
-                <span>Phân tích giao dịch với Lá chắn AI</span>
+                <span>{t.transfer.submit}</span>
               </>
             )}
           </button>

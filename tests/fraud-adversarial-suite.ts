@@ -1,6 +1,8 @@
 /**
  * TrustPay AI — Bộ kiểm thử tấn công lừa đảo & sức chịu tải (15 kịch bản thực tế
  * tại Việt Nam) + kiểm thử tự phục hồi (Offline Fallback / Circuit Breaker).
+ * v1.1 bổ sung F16–F20 cho Ví Fintech: Safe Shopping Agent, Blacklist cụm STK,
+ * danh mục Hóa đơn, lũy kế ngày TT 50 và điều chuyển hạn mức / che PII hiển thị.
  *
  * Chạy trực tiếp: `npm run test:fraud`  (hoặc `npx --yes tsx tests/fraud-adversarial-suite.ts`)
  * Cổng Production nghiêm ngặt: `npx --yes tsx tests/fraud-adversarial-suite.ts --strict`
@@ -21,9 +23,24 @@ import {
   decideBiometric,
   BIOMETRIC_SINGLE_TXN_THRESHOLD_VND,
 } from "@/lib/compliance/biometric-policy";
-import { containsRawCccd, maskCccd, maskPiiInText } from "@/lib/security/pii-masking";
+import {
+  containsRawCccd,
+  maskCccd,
+  maskPiiInText,
+  maskRecipientForOps,
+} from "@/lib/security/pii-masking";
 import { CircuitBreaker, TimeoutError, withTimeout } from "@/lib/resilience/circuit-breaker";
-import type { TransactionAnalysisRequest } from "@/types/trustpay";
+import { analyzeShopTarget, buildShopCommandText, SHOP_SAMPLES } from "@/lib/agents/safe-shopping";
+import { expandBlacklistForText, matchesBlacklistEntry } from "@/lib/wallet/blacklist-patterns";
+import {
+  applyBudgetReallocation,
+  computeDailyOutflow,
+  planBudgetReallocation,
+} from "@/lib/wallet/ledger";
+import { createDefaultWalletBudgets } from "@/lib/wallet/defaults";
+import { vnDayKey } from "@/lib/wallet/format";
+import { maskRecipientForDisplay } from "@/lib/security/pii-display";
+import type { TransactionAnalysisRequest, WalletTransaction } from "@/types/trustpay";
 
 configureOfflineMode();
 
@@ -36,7 +53,7 @@ function req(commandText: string, imageBase64?: string): TransactionAnalysisRequ
   };
 }
 
-const suite = new Suite("BỘ KIỂM THỬ TẤN CÔNG LỪA ĐẢO & SỨC CHỊU TẢI (15 kịch bản)");
+const suite = new Suite("BỘ KIỂM THỬ TẤN CÔNG LỪA ĐẢO & SỨC CHỊU TẢI (15 kịch bản + 5 kịch bản Ví v1.1)");
 
 void (async () => {
   // F01 — Mạo danh Cơ quan Công an / Cán bộ điều tra + tài khoản Blacklist
@@ -295,6 +312,115 @@ void (async () => {
     c.ge(r.scamReport.redFlags.length, 1, "redFlags luôn có ít nhất 1 phần tử");
     c.truthy(typeof r.requireBiometric === "boolean", "Có cờ requireBiometric");
     c.truthy(Boolean(r.fintechOpsTicket.ticketId), "Có ticket Ops với mã hợp lệ");
+  });
+
+  // ---- Ví Fintech v1.1 ----
+
+  // F16 — Safe Shopping Agent: link tên miền lạ mạo danh thương hiệu vs link chính hãng
+  await suite.run("F16", "Safe Shopping Agent: link .xyz mạo danh Shopee bị chặn, link Tiki chính hãng an toàn", async (c) => {
+    const bad = analyzeShopTarget({ ...SHOP_SAMPLES.suspicious, blacklist: DEFAULT_BLACKLIST });
+    const codes = bad.signals.map((signal) => signal.code);
+    c.eq(bad.riskLevel, "HIGH", "Link tên miền lạ bị xếp rủi ro CAO");
+    c.ok(codes.includes("BRAND_IMPERSONATION"), "Phát hiện mạo danh thương hiệu");
+    c.ok(codes.includes("SUSPICIOUS_TLD"), "Phát hiện đuôi tên miền rủi ro (.xyz)");
+    c.ok(codes.includes("NO_HTTPS"), "Phát hiện website không dùng HTTPS");
+    c.ok(codes.includes("PRICE_TOO_GOOD"), "Phát hiện giá rẻ bất thường so với thị trường");
+
+    const good = analyzeShopTarget({ ...SHOP_SAMPLES.trusted, blacklist: DEFAULT_BLACKLIST });
+    c.eq(good.riskLevel, "LOW", "Link Tiki chính hãng ở mức THẤP");
+    c.ok(
+      good.signals.some((signal) => signal.code === "OFFICIAL_STORE"),
+      "Nhận diện người bán chính hãng đã xác minh",
+    );
+
+    const r = await analyze(req(buildShopCommandText(bad, SHOP_SAMPLES.suspicious.price)));
+    c.eq(r.parsedAmount, SHOP_SAMPLES.suspicious.price, "Bóc tách đúng giá dù tên miền chứa '99k'");
+    c.eq(r.category, "Mua sắm", "Giao dịch mua online thuộc danh mục Mua sắm");
+  });
+
+  // F17 — Phong tỏa cụm STK theo tiền tố (banner bất thường Ops)
+  await suite.run("F17", "Cụm STK 1903xxxx bị phong tỏa: STK cùng tiền tố bị xếp CAO ở lần phân tích kế tiếp", async (c) => {
+    const command = "Chuyển 2.000.000đ vào STK 1903456721 tiền hàng";
+    c.ok(matchesBlacklistEntry("1903xxxx", command), "Mục cụm khớp STK cùng tiền tố 1903");
+    c.ok(
+      !matchesBlacklistEntry("1903xxxx", "Chuyển 2.000.000đ vào STK 0071003456789"),
+      "Không khớp nhầm STK khác tiền tố",
+    );
+
+    const expanded = expandBlacklistForText(["1903xxxx", ...DEFAULT_BLACKLIST], command);
+    c.ok(expanded.includes("1903456721"), "Client nở mục cụm thành STK cụ thể có trong lệnh");
+
+    const r = await analyze({ commandText: command, currentBudgets: DEFAULT_BUDGETS, blacklist: expanded });
+    c.eq(r.scamReport.riskLevel, "HIGH", "Giao dịch tới STK thuộc cụm bị xếp rủi ro CAO");
+    c.ok(r.requireBiometric, "Bắt buộc xác thực sinh trắc học");
+  });
+
+  // F18 — Danh mục Hóa đơn chỉ kích hoạt khi Ví theo dõi Hóa đơn
+  await suite.run("F18", "Danh mục Hóa đơn cho Ví v1.1, giữ nguyên hành vi với ngân sách mặc định", async (c) => {
+    const command = "Thanh toán 850.000đ tiền điện EVN tháng 11";
+    const r = await analyze({
+      commandText: command,
+      currentBudgets: createDefaultWalletBudgets(),
+      blacklist: DEFAULT_BLACKLIST,
+    });
+    c.eq(r.category, "Hóa đơn", "Phân loại đúng danh mục Hóa đơn");
+    c.eq(r.parsedAmount, 850_000, "Bóc tách đúng số tiền 850 nghìn");
+    c.ok(!r.budgetAlert.isExceeded, "Nằm trong hạn mức Hóa đơn");
+    c.eq(r.scamReport.riskLevel, "LOW", "Xếp mức rủi ro THẤP");
+
+    const legacy = await analyze(req(command));
+    c.eq(legacy.category, "Khác", "Ngân sách mặc định (không có Hóa đơn) giữ nguyên hành vi cũ");
+  });
+
+  // F19 — Lũy kế ngày theo TT 50 / QĐ 2345 (ngưỡng 20 triệu/ngày giữ nguyên)
+  await suite.run("F19", "Lũy kế ngày: 18tr đã chi + 3tr mới vượt 20tr/ngày → bắt buộc sinh trắc học", (c) => {
+    const now = Date.parse("2026-11-20T03:00:00.000Z");
+    const history: WalletTransaction[] = [
+      { id: "t1", timestamp: "2026-11-20T01:00:00.000Z", channel: "TRANSFER", recipient: "A", amount: 10_000_000, category: "Khác", riskLevel: "LOW", riskScore: 10, status: "COMPLETED" },
+      { id: "t2", timestamp: "2026-11-20T02:00:00.000Z", channel: "SHOPPING", recipient: "B", amount: 8_000_000, category: "Mua sắm", riskLevel: "LOW", riskScore: 5, status: "COMPLETED" },
+      { id: "t3", timestamp: "2026-11-20T02:30:00.000Z", channel: "TRANSFER", recipient: "C", amount: 9_000_000, category: "Khác", riskLevel: "HIGH", riskScore: 95, status: "BLOCKED" },
+      { id: "t4", timestamp: "2026-11-19T02:00:00.000Z", channel: "TRANSFER", recipient: "D", amount: 7_000_000, category: "Khác", riskLevel: "LOW", riskScore: 10, status: "COMPLETED" },
+    ];
+    const daily = computeDailyOutflow(history, vnDayKey(now));
+    c.eq(daily, 18_000_000, "Chỉ cộng giao dịch hoàn tất trong ngày (giờ Việt Nam)");
+
+    const decision = decideBiometric({ parsedAmount: 3_000_000, riskLevel: "LOW", dailyCumulativeBefore: daily });
+    c.ok(decision.requireBiometric, "Vượt 20 triệu/ngày → bắt buộc sinh trắc học");
+
+    const exact = decideBiometric({ parsedAmount: BIOMETRIC_SINGLE_TXN_THRESHOLD_VND, riskLevel: "LOW" });
+    c.ok(!exact.requireBiometric, "Đúng 10 triệu/lần không bị buộc chỉ vì giá trị (A6.3)");
+  });
+
+  // F20 — Điều chuyển hạn mức thật (Kịch bản 2) + che PII hiển thị khớp lớp máy chủ
+  await suite.run("F20", "Điều chuyển đúng 1.000.000đ từ Khác sang Mua sắm & che PII hiển thị khớp NĐ 13", async (c) => {
+    const budgets = createDefaultWalletBudgets();
+    const r = await analyze({
+      commandText: "Thanh toán 2.500.000đ mua giày sneaker tại Shop XYZ",
+      currentBudgets: budgets,
+      blacklist: DEFAULT_BLACKLIST,
+    });
+    c.ok(r.budgetAlert.isExceeded, "Kịch bản 2 vượt hạn mức Mua sắm");
+
+    const plan = planBudgetReallocation(budgets, "Mua sắm", -r.budgetAlert.remainingAfter);
+    c.truthy(plan, "Lập được kế hoạch điều chuyển hạn mức");
+    if (plan) {
+      c.eq(plan.from, "Khác", "Nguồn trích là mục Khác");
+      c.eq(plan.amount, 1_000_000, "Đúng phần chênh lệch 1.000.000đ");
+      c.ok(plan.feasible, "Mục Khác đủ hạn mức để trích");
+      const next = applyBudgetReallocation(budgets, plan);
+      const shop = next.find((budget) => budget.name === "Mua sắm");
+      const other = next.find((budget) => budget.name === "Khác");
+      c.eq(shop?.limit, 5_000_000, "Hạn mức Mua sắm tăng lên 5 triệu");
+      c.eq(other?.limit, 1_000_000, "Hạn mức Khác giảm tương ứng còn 1 triệu");
+      c.eq((shop?.limit ?? 0) - (shop?.spent ?? 0) - r.parsedAmount, 0, "Đủ hạn mức để hoàn tất thanh toán");
+    }
+
+    const recipient = "Cán bộ điều tra (999988887777) / 1903888999 / 0909123888";
+    c.eq(
+      maskRecipientForDisplay(recipient),
+      maskRecipientForOps(recipient),
+      "Che PII phía client khớp quy tắc pii-masking.ts",
+    );
   });
 
   suite.finish();

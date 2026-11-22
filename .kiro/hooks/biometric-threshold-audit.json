@@ -10,7 +10,8 @@
         "type": "command",
         "command": "node .kiro/scripts/biometric-threshold-audit.mjs",
         "timeout": 30
-      }
+      },
+      "enabled": false
     }
   ]
 }

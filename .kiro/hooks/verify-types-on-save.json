@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Verify Types on Save",
+      "trigger": "PostFileSave",
+      "description": "Chạy kiểm tra kiểu TypeScript (tsc --noEmit) mỗi khi lưu tệp .ts/.tsx trong app/ hoặc components/.",
+      "matcher": "(app|components).*\\.(ts|tsx)$",
+      "action": {
+        "type": "command",
+        "command": "npx tsc --noEmit",
+        "timeout": 180
+      }
+    }
+  ]
+}

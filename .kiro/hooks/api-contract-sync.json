@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "API Contract Sync Check",
+      "trigger": "PostFileSave",
+      "description": "Đối chiếu tính nhất quán giữa API_CONTRACT.md, types/trustpay.ts và các API route khi chỉnh sửa backend.",
+      "matcher": "(app.api|types.trustpay|API_CONTRACT)",
+      "action": {
+        "type": "command",
+        "command": "node .kiro/scripts/api-contract-sync.mjs",
+        "timeout": 60
+      }
+    }
+  ]
+}

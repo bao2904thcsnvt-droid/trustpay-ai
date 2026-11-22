@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // AWS CDK infra is a separate TypeScript project with its own toolchain.
+    "infra/**",
   ]),
 ]);
 

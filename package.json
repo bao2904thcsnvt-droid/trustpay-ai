@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test:fraud": "npx --yes tsx tests/fraud-adversarial-suite.ts",
+    "test:injection": "npx --yes tsx tests/prompt-injection-jailbreak-suite.ts",
+    "test:bench": "npx --yes tsx tests/concurrency-benchmark-suite.ts",
+    "test:all": "npm run test:fraud && npm run test:injection"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1173.0",

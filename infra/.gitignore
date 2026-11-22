@@ -1,0 +1,13 @@
+# CDK
+cdk.out/
+*.d.ts
+*.js
+!jest.config.js
+.cdk.staging/
+
+# deps
+node_modules/
+
+# env
+.env
+*.local

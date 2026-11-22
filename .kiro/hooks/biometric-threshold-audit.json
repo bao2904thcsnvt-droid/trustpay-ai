@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Biometric Threshold Audit",
+      "trigger": "PreToolUse",
+      "description": "Cảnh báo (yêu cầu xác nhận) khi thao tác ghi đụng chạm ngưỡng pháp lý sinh trắc học 10 triệu/lần và 20 triệu/ngày theo TT 50/QĐ 2345.",
+      "matcher": "fs_write|str_replace|fs_append",
+      "action": {
+        "type": "command",
+        "command": "node .kiro/scripts/biometric-threshold-audit.mjs",
+        "timeout": 30
+      }
+    }
+  ]
+}

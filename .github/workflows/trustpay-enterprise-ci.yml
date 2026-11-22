@@ -1,0 +1,300 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# TrustPay AI — Enterprise CI (MoMo TechDay 2026)
+#
+# Chạy tự động trên mọi Pull Request vào nhánh `main` (và chạy tay qua
+# workflow_dispatch khi cần demo cho Ban Giám Khảo).
+#
+# Sơ đồ pipeline:
+#
+#   ┌─ ① typecheck ─┬─ ② adversarial-tests (test:fraud + test:injection) ─┐
+#   │               ├─ ③ benchmark (test:bench, cổng P99)                 ├─ ✅ ci-gate
+#   │               └─ ④ build (next build)                               │
+#   └─ ⑤ cdk-synth (infra/, dự án CDK độc lập) ─────────────────────────────┘
+#
+# Nguyên tắc:
+#  - KHÔNG cấp AWS credentials cho CI. Mọi kiểm thử chạy Offline Fallback xác định;
+#    `cdk synth` không cần tài khoản AWS.
+#  - Quyền tối thiểu: `contents: read`. Dùng `pull_request` (không dùng
+#    `pull_request_target`) nên PR từ fork không đọc được secrets.
+#  - Đặt job "✅ CI Gate" làm Required status check duy nhất trong Branch
+#    Protection của `main`.
+#  - Khuyến nghị Production: ghim action theo commit SHA + bật Dependabot cho
+#    `github-actions`.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: TrustPay Enterprise CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trustpay-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  NEXT_TELEMETRY_DISABLED: "1"
+  # Chặn SDK dò IMDS trên runner (không có AWS credentials trong CI).
+  AWS_EC2_METADATA_DISABLED: "true"
+
+defaults:
+  run:
+    # `shell: bash` tường minh => GitHub chạy với `-eo pipefail`,
+    # nên `npm run ... | tee` vẫn giữ mã thoát lỗi.
+    shell: bash
+
+jobs:
+  # ① Kiểm tra kiểu toàn dự án (app, components, lib, tests).
+  typecheck:
+    name: "① Typecheck (tsc --noEmit)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      # Checkout sạch không có `.next/types` và `next-env.d.ts` (đều bị .gitignore),
+      # trong khi `app/layout.tsx` dùng kiểu toàn cục `LayoutProps` do Next sinh ra.
+      - name: Generate Next.js route types
+        run: npx next typegen
+
+      - name: npm run typecheck
+        run: npm run typecheck
+
+  # ② Bộ kiểm thử đối kháng: 15 kịch bản lừa đảo + 20 kịch bản Prompt Injection.
+  adversarial-tests:
+    name: "② Fraud & Prompt-Injection suites"
+    needs: typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: npm run test:fraud (15 kịch bản lừa đảo + tự phục hồi)
+        run: npm run test:fraud 2>&1 | tee fraud-report.txt
+
+      - name: npm run test:injection (20 kịch bản Prompt Injection / Jailbreak)
+        # Vẫn chạy khi test:fraud lỗi để hiển thị đủ cả hai báo cáo.
+        if: ${{ !cancelled() }}
+        run: npm run test:injection 2>&1 | tee injection-report.txt
+
+      - name: Publish job summary
+        if: ${{ !cancelled() }}
+        run: |
+          {
+            echo "## 🛡️ TrustPay AI — Kiểm thử đối kháng"
+            for report in fraud-report.txt injection-report.txt; do
+              if [ -f "$report" ]; then
+                echo ""
+                echo "### ${report%.txt}"
+                echo '```text'
+                tail -n 80 "$report"
+                echo '```'
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: adversarial-test-reports
+          path: |
+            fraud-report.txt
+            injection-report.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ③ Benchmark tải đồng thời ~500 giao dịch/giây trên Offline Fallback Engine.
+  benchmark:
+    name: "③ Concurrency benchmark (500 TPS)"
+    needs: typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BENCH_TPS: "500"
+      BENCH_DURATION_SEC: "4"
+      # Cổng chống hồi quy nghiêm trọng (vd regex backtracking), KHÔNG phải SLA.
+      # Mỗi đợt bắn 500 yêu cầu đồng thời vào một tiến trình Node nên P99 phản ánh
+      # cả thời gian xếp hàng; ngưỡng rộng để tránh flaky trên runner dùng chung.
+      BENCH_MAX_P99_MS: "2000"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: npm run test:bench (P50 / P95 / P99 + RAM)
+        run: npm run test:bench 2>&1 | tee bench-report.txt
+
+      - name: Publish job summary
+        if: ${{ !cancelled() }}
+        run: |
+          {
+            echo "## ⚡ TrustPay AI — Benchmark tải đồng thời"
+            echo ""
+            echo "Mục tiêu: ${BENCH_TPS} giao dịch/giây × ${BENCH_DURATION_SEC} giây · Cổng P99 ≤ ${BENCH_MAX_P99_MS} ms"
+            echo '```text'
+            if [ -f bench-report.txt ]; then tail -n 40 bench-report.txt; fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-report
+          path: bench-report.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ④ Build Production của Next.js (kèm type-check nội bộ của Next).
+  build:
+    name: "④ Next.js production build"
+    needs: typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Restore Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('app/**', 'components/**', 'lib/**', 'types/**') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+
+      # Lưu ý: next/font/google tải font Be Vietnam Pro & Geist Mono lúc build,
+      # nên job này cần truy cập Internet (runner GitHub mặc định có).
+      - name: npm run build
+        run: npm run build
+
+  # ⑤ Tổng hợp CloudFormation từ AWS CDK (không triển khai, không cần credentials).
+  cdk-synth:
+    name: "⑤ AWS CDK synth (infra/)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+        working-directory: infra
+    env:
+      CDK_DEFAULT_REGION: ap-southeast-1
+      CDK_DISABLE_VERSION_CHECK: "true"
+      CDK_DISABLE_CLI_TELEMETRY: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # infra/ là dự án TypeScript độc lập. Khi đã commit infra/package-lock.json
+      # thì dùng `npm ci` (tái lập); nếu chưa có thì `npm install` (lock được sinh
+      # ra và NodejsFunction cần nó qua depsLockFilePath lúc synth).
+      - name: Install infra dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            echo "::warning title=infra/package-lock.json::Chưa có lockfile cho infra/ — dùng npm install (không tái lập). Hãy commit infra/package-lock.json."
+            npm install --no-audit --no-fund
+          fi
+
+      - name: cdk synth (3 stacks, esbuild bundling Lambda)
+        run: npx cdk synth --quiet --no-notices
+
+      - name: Publish job summary
+        if: ${{ !cancelled() }}
+        run: |
+          {
+            echo "## ☁️ TrustPay AI — AWS CDK synth"
+            echo ""
+            if [ -d cdk.out ]; then
+              echo "Cloud assembly đã sinh trong \`infra/cdk.out\`:"
+              echo '```text'
+              ls -1 cdk.out | grep -E '\.template\.json$' || true
+              echo '```'
+            else
+              echo "Không tìm thấy \`infra/cdk.out\`."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload cloud assembly
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdk-cloud-assembly
+          path: infra/cdk.out
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ✅ Cổng tổng hợp — đặt làm Required status check duy nhất cho nhánh `main`.
+  ci-gate:
+    name: "✅ CI Gate"
+    if: ${{ always() }}
+    needs: [typecheck, adversarial-tests, benchmark, build, cdk-synth]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify all required jobs succeeded
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          {
+            echo "## ✅ TrustPay AI — CI Gate"
+            echo ""
+            echo "| Job | Kết quả |"
+            echo "|---|---|"
+            echo "$NEEDS_JSON" | jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if echo "$NEEDS_JSON" | jq -e 'to_entries | any(.value.result != "success")' > /dev/null; then
+            echo "::error title=CI Gate::Ít nhất một job bắt buộc không thành công — chặn merge vào main."
+            exit 1
+          fi
+          echo "Tất cả job bắt buộc đều thành công."

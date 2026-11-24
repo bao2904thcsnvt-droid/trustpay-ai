@@ -15,6 +15,8 @@ import {
   Network,
   Gauge,
   Plus,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import type { BudgetCategory, CategoryName, TrustedGuardian } from "@/types/trustpay";
 import { useI18n } from "@/components/i18n/I18nProvider";
@@ -36,6 +38,9 @@ export interface WalletSidebarProps {
   /** Trả về false nếu mục đã tồn tại. */
   onAddBlacklistEntry?: (entry: string) => boolean;
   guardianHighlighted?: boolean;
+  /** Vòng 4: "👁️ Ẩn/Hiện số dư" — ẩn thì hiển thị `•••••••• đ`. */
+  balanceHidden?: boolean;
+  onToggleBalance?: () => void;
 }
 
 const BLACKLIST_PREVIEW = 6;
@@ -102,6 +107,8 @@ export default function WalletSidebar({
   onSaveGuardian,
   onAddBlacklistEntry,
   guardianHighlighted = false,
+  balanceHidden = false,
+  onToggleBalance,
 }: WalletSidebarProps) {
   const { t, money, category } = useI18n();
   const [reportValue, setReportValue] = useState("");
@@ -173,7 +180,23 @@ export default function WalletSidebar({
           </div>
 
           <div className="mt-5">
-            <p className="font-mono text-3xl font-bold tracking-tight text-white">{money(walletBalance)}</p>
+            <div className="flex items-center gap-2">
+              <p className="min-w-0 font-mono text-3xl font-bold tracking-tight text-white" aria-live="polite">
+                {balanceHidden ? t.privacy.hidden : money(walletBalance)}
+              </p>
+              {onToggleBalance && (
+                <button
+                  type="button"
+                  onClick={onToggleBalance}
+                  aria-pressed={balanceHidden}
+                  aria-label={balanceHidden ? t.privacy.show : t.privacy.hide}
+                  title={balanceHidden ? `👁️ ${t.privacy.show}` : `👁️ ${t.privacy.hide}`}
+                  className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-white/15 text-white transition-colors hover:bg-white/25"
+                >
+                  {balanceHidden ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
+                </button>
+              )}
+            </div>
             <p className="mt-1 text-xs text-pink-100/90">
               {t.wallet.spentSummary(money(totalSpent), money(totalLimit), totalPct)}
             </p>

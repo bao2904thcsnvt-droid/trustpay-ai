@@ -74,7 +74,7 @@ import BiometricModal from "@/components/BiometricModal";
 import FraudOpsDashboard from "@/components/fintech-ops/FraudOpsDashboard";
 import WelcomeOnboarding, { type OnboardingRole } from "@/components/onboarding/WelcomeOnboarding";
 import QuickTour, { type TourStepIndex } from "@/components/onboarding/QuickTour";
-import { markGuideSeen } from "@/lib/preferences/preferences-store";
+import { markGuideSeen, preferencesStore, setEmbedMode } from "@/lib/preferences/preferences-store";
 import { endCallShield, featureStore, startCallShield } from "@/lib/features/feature-store";
 import { applyCallShieldUplift, assessCallRisk, captionsRevealed } from "@/lib/call-shield/call-shield";
 import { buildQrOpsTicket, QR_DATA_TEXT, qrRecipientLabel } from "@/lib/qr/vietqr-inspector";
@@ -85,6 +85,65 @@ import PaymentCopilot from "@/components/user-wallet/PaymentCopilot";
 import CallShieldBar from "@/components/user-wallet/CallShieldBar";
 import QrInspector, { type QrCheckResult } from "@/components/user-wallet/QrInspector";
 import SecurityFinOpsPanel from "@/components/finops/SecurityFinOpsPanel";
+// Vòng 3 — Non-Custodial AI Security Layer: Real VietQR Handoff + MoMo SDK Embedded
+import { findInstitution } from "@/lib/payments/banks";
+import { derivePaymentMemo, type PayeeDetails } from "@/lib/payments/vietqr-builder";
+import {
+  createDecisionToken,
+  createNonce,
+  decisionFromRisk,
+  reasonCodesFrom,
+  type DecisionEngine,
+  type SdkDecision,
+  type SdkEventName,
+  type SdkReasonCode,
+} from "@/lib/sdk/decision-token";
+import {
+  buildHostCommandText,
+  deliverDecisionToken,
+  isEmbedRequested,
+  parseHostTransferRequest,
+  resolveHostOrigin,
+  type HostTransferRequest,
+} from "@/lib/sdk/host-bridge";
+import RealPaymentHandoff, { type HandoffState } from "@/components/payments/RealPaymentHandoff";
+import { EMPTY_PAYEE_DRAFT, type PayeeDraft } from "@/components/payments/PayeeFields";
+import EmbeddedSdkShell, { type EmbeddedSdkTab } from "@/components/sdk/EmbeddedSdkShell";
+import type { SdkEventRecord } from "@/components/sdk/SdkEventInspector";
+// Vòng 4 — Trung tâm Thanh toán Hợp nhất: Easy/Pro, đa ngân hàng, Danh bạ Tin cậy, Paste-to-Pay,
+// Ẩn số dư, Khóa sinh trắc học thiết bị, Chia tiền nhóm, Nhờ AI kiểm tra giúp, PWA.
+import { buildTransferCommand } from "@/lib/copilot/payment-copilot";
+import {
+  hubStore,
+  isTrustedPayeeSaved,
+  setBalanceHidden,
+  setUiMode,
+  touchTrustedPayee,
+  useHubState,
+  type TrustedPayee,
+  type UiMode,
+} from "@/lib/hub/hub-store";
+import { buildPasteCommand, isPasteComplete, parsePaymentMessage, type PasteField } from "@/lib/hub/paste-to-pay";
+import { appLockSession, QR_UNLOCK_WINDOW_MS, useUnlockedAt } from "@/lib/security/app-lock";
+import type { PasteSummary } from "@/components/user-wallet/TransactionInputPanel";
+import EasyHome, { type EasyPanel } from "@/components/hub/EasyHome";
+import LinkedAccountsBar, { linkedAccountLabel } from "@/components/hub/LinkedAccountsBar";
+import TrustedPayees from "@/components/hub/TrustedPayees";
+import SplitBill from "@/components/hub/SplitBill";
+import AiCheckHelper from "@/components/hub/AiCheckHelper";
+import SaveTrustedPayeeCta from "@/components/hub/SaveTrustedPayeeCta";
+import AppLockModal from "@/components/security/AppLockModal";
+import AppLockSettings from "@/components/security/AppLockSettings";
+import PwaRegister from "@/components/pwa/PwaRegister";
+// Vòng 5 — Dark Cinematic Glassmorphism: Hero toàn màn hình + nền video sợi quang.
+import { shouldSkipHero, type HeroTarget } from "@/lib/cinematic/cinematic";
+import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
+import { useResolvedTheme } from "@/components/theme/ThemeController";
+import CinematicBackdrop from "@/components/cinematic/CinematicBackdrop";
+import HeroLanding from "@/components/cinematic/HeroLanding";
+
+/** Thời lượng hiệu ứng mở từ Hero xuống Không gian làm việc (khớp `.tp-cine` trong globals.css). */
+const HERO_LEAVE_MS = 640;
 
 /** Ghi chú dữ liệu (lưu bằng tiếng Việt — lớp hiển thị tự dịch khi chọn EN). */
 const HOLD_NOTE = "Đang tạm giữ — chờ Hạ nhiệt 15 giây, FaceID hoặc Người giám hộ duyệt";
@@ -112,7 +171,32 @@ interface TransferSession {
   guardianDecidedAt: number | null;
   reportText: string | null;
   reallocation: { amount: number; from: CategoryName; to: CategoryName } | null;
+  /** Vòng 3: người nhận thật đã được Lá chắn AI phân tích (khóa cho Real Payment Handoff). */
+  payee: PayeeDetails | null;
+  /** Vòng 4: nội dung chuyển khoản gợi ý từ Paste-to-Pay (null → suy ra từ câu lệnh). */
+  memo: string | null;
 }
+
+/** Lệnh điền sẵn cho biểu mẫu chuyển tiền (panel remount theo `nonce`). */
+interface InputSeed {
+  nonce: number;
+  text: string;
+  scenarioId: string | null;
+  /** Vòng 4: tự phân tích ngay (Danh bạ 1 chạm / Paste-to-Pay đủ thông tin). */
+  autoSubmit?: boolean;
+  paste?: PasteSummary | null;
+  memo?: string;
+}
+
+const PASTE_REQUIRED_FIELDS: readonly PasteField[] = ["bank", "account", "amount"];
+
+/** Tham chiếu người nhận trong Decision Token (BIN + STK; token chỉ chứa bản che + dấu vân tay). */
+function payeeRefOf(payee: PayeeDetails | null): { bankBin: string; accountNumber: string } | null {
+  const institution = payee ? findInstitution(payee.institutionCode) : undefined;
+  return payee && institution ? { bankBin: institution.bin, accountNumber: payee.accountNumber } : null;
+}
+
+const MAX_SDK_EVENTS = 20;
 
 type BiometricRequest =
   | { flow: "transfer"; amount: number; recipient: string; riskScore: number; reasons: string[] }
@@ -168,7 +252,9 @@ export default function TrustPayApp() {
 
   const [activeTab, setActiveTab] = useState<AppTab>("user-wallet");
   const [activeAgent, setActiveAgent] = useState<AgentTab>("transfer");
-  const [showOnboarding, setShowOnboarding] = useState(true);
+  // Vòng 5: màn hình Hero thay vai trò thẻ chào mừng lúc mới vào; thẻ chọn vai trò vẫn mở
+  // được bất cứ lúc nào từ menu phụ ("Giới thiệu").
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [transfer, setTransfer] = useState<TransferSession | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [coolingOpen, setCoolingOpen] = useState(false);
@@ -178,7 +264,7 @@ export default function TrustPayApp() {
   const [shopVerifiedCheckId, setShopVerifiedCheckId] = useState<string | null>(null);
   const [evidenceByTicket, setEvidenceByTicket] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<ToastNotification | null>(null);
-  const [inputSeed, setInputSeed] = useState<{ nonce: number; text: string; scenarioId: string | null }>({
+  const [inputSeed, setInputSeed] = useState<InputSeed>({
     nonce: 0,
     text: "",
     scenarioId: null,
@@ -190,17 +276,113 @@ export default function TrustPayApp() {
   const [finopsOpen, setFinopsOpen] = useState(false);
   const [qrVerifiedCheckId, setQrVerifiedCheckId] = useState<string | null>(null);
   const [lastTrace, setLastTrace] = useState<AwsPipelineTrace | null>(null);
+  // Vòng 3: người nhận thật (giữ ở đây để không mất khi biểu mẫu remount) + nhật ký Decision Token.
+  const [payeeDraft, setPayeeDraft] = useState<PayeeDraft>(EMPTY_PAYEE_DRAFT);
+  const [sdkEvents, setSdkEvents] = useState<SdkEventRecord[]>([]);
+  const [urlEmbed, setUrlEmbed] = useState(false);
+  const urlEmbedRef = useRef(false);
+  const hostRequestHandlerRef = useRef<(request: HostTransferRequest) => void>(() => {});
 
   const toastTimerRef = useRef<number | null>(null);
   const highlightTimerRef = useRef<number | null>(null);
   const resetEpochRef = useRef(0);
   const analysisEpochRef = useRef(0);
 
+  // Vòng 4 — Trung tâm Thanh toán Hợp nhất (store bền vững `trustpay-ai.hub.v1`).
+  const hub = useHubState();
+  const unlockedAt = useUnlockedAt();
+  const [easyPanel, setEasyPanel] = useState<EasyPanel>("home");
+  const [cameraRequest, setCameraRequest] = useState(0);
+  const [qrExternal, setQrExternal] = useState<{ nonce: number; payload: string } | null>(null);
+  const [qrGateOpen, setQrGateOpen] = useState(false);
+  const [expiredUnlockAt, setExpiredUnlockAt] = useState<number | null>(null);
+  const qrExternalNonceRef = useRef(0);
+  const pendingHandoffFocusRef = useRef(false);
+
+  // Vòng 5 — Hero toàn màn hình (mặc định hiện khi mới vào; máy chủ & lần hydrate đầu giống nhau).
+  const [heroVisible, setHeroVisible] = useState(true);
+  const [heroLeaving, setHeroLeaving] = useState(false);
+  const heroTimerRef = useRef<number | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
+  const resolvedTheme = useResolvedTheme();
+
+  // iframe nhúng SDK (`?embed=momo`) và lối tắt PWA (`?action=…`) đi thẳng vào Không gian làm việc.
+  useEffect(() => {
+    if (shouldSkipHero(window.location.search)) {
+      setHeroVisible(false);
+    }
+  }, []);
+
+  // Mở khóa chỉ có hiệu lực 2 phút cho việc tạo mã VietQR — hẹn giờ đánh dấu hết hạn (không gọi
+  // thời gian thực khi render).
+  useEffect(() => {
+    if (unlockedAt === null) return;
+    const remaining = unlockedAt + QR_UNLOCK_WINDOW_MS - Date.now();
+    const timer = window.setTimeout(() => setExpiredUnlockAt(unlockedAt), Math.max(0, remaining));
+    return () => window.clearTimeout(timer);
+  }, [unlockedAt]);
+
   useEffect(() => {
     return () => {
       if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
       if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
+      if (heroTimerRef.current !== null) window.clearTimeout(heroTimerRef.current);
     };
+  }, []);
+
+  // `?embed=momo` → bật giao diện nhúng SDK tinh gọn cho riêng phiên/iframe này (không ghi đè
+  // tùy chọn đã lưu, để tab TrustPay đầy đủ đang mở song song không bị chuyển chế độ theo).
+  useEffect(() => {
+    if (isEmbedRequested(window.location.search)) {
+      urlEmbedRef.current = true;
+      setUrlEmbed(true);
+    }
+  }, []);
+
+  // Vòng 4 — lối tắt PWA (manifest `shortcuts`): `/?action=scan` mở Camera quét QR, `/?action=split`
+  // mở Chia tiền nhóm. Chạy trong hẹn giờ để Strict Mode (effect chạy 2 lần) không lặp hành động.
+  useEffect(() => {
+    if (isEmbedRequested(window.location.search)) return;
+    const action = new URLSearchParams(window.location.search).get("action");
+    if (action !== "scan" && action !== "split") return;
+    const timer = window.setTimeout(() => {
+      setShowOnboarding(false);
+      setActiveTab("user-wallet");
+      if (action === "scan") {
+        setActiveAgent("qr");
+        setCameraRequest((prev) => prev + 1);
+        if (hubStore.getSnapshot().uiMode === "easy") {
+          setEasyPanel("scan");
+        } else {
+          focusArea("tp-qr-inspector");
+        }
+      } else {
+        if (hubStore.getSnapshot().uiMode === "easy") {
+          setUiMode("pro");
+        }
+        focusArea("tp-split-bill");
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.delete("action");
+      window.history.replaceState(window.history.state, "", url.toString());
+    }, 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Host App → SDK: chỉ nhận từ iframe cha có origin đã khai báo (?hostOrigin= hoặc referrer).
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (window.parent === window || event.source !== window.parent) return;
+      const trustedOrigin = resolveHostOrigin(window.location.search, document.referrer);
+      if (!trustedOrigin || event.origin !== trustedOrigin) return;
+      const request = parseHostTransferRequest(event.data);
+      if (request) {
+        hostRequestHandlerRef.current(request);
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
   }, []);
 
   const dailyOutflow = todayKey ? computeDailyOutflow(wallet.transactions, todayKey) : null;
@@ -241,6 +423,58 @@ export default function TrustPayApp() {
     if (!SCENARIO_3) return;
     const scenario = SCENARIO_3;
     setInputSeed((prev) => ({ nonce: prev.nonce + 1, text: scenario.commandText, scenarioId: scenario.id }));
+  };
+
+  // ------------------------------------------- TrustPay SDK Decision Token
+
+  /**
+   * Phát Decision Token (`ALLOW | HOLD_GUARDIAN | BLOCK`) cho Host App. Token luôn
+   * được ghi vào Inspector; chỉ ở Chế độ Nhúng SDK mới gửi `postMessage` tới Host.
+   */
+  const emitDecision = (input: {
+    event: SdkEventName;
+    requestId: string;
+    decision: SdkDecision;
+    riskScore: number;
+    riskLevel: TransactionAnalysisResponse["scamReport"]["riskLevel"];
+    biometricRequired: boolean;
+    reasons: SdkReasonCode[];
+    amount: number;
+    payee: { bankBin: string; accountNumber: string } | null;
+    engine: DecisionEngine;
+  }) => {
+    const nowMs = Date.now();
+    const token = createDecisionToken({ ...input, nowMs, nonce: createNonce() });
+    const hostOrigin = resolveHostOrigin(window.location.search, document.referrer);
+    const embedded = preferencesStore.getSnapshot().embedMode || urlEmbedRef.current;
+    const delivery = embedded ? deliverDecisionToken(token, hostOrigin) : "NOT_EMBEDDED";
+    setSdkEvents((prev) =>
+      [
+        { id: createClientId("EVT"), direction: "OUTBOUND" as const, at: nowMs, token, delivery, hostOrigin },
+        ...prev,
+      ].slice(0, MAX_SDK_EVENTS),
+    );
+  };
+
+  /** Token cho các quyết định tiếp theo của cùng một phiên chuyển tiền. */
+  const emitSessionDecision = (
+    session: TransferSession,
+    event: SdkEventName,
+    decision: SdkDecision,
+    reasons: SdkReasonCode[],
+  ) => {
+    emitDecision({
+      event,
+      requestId: session.id,
+      decision,
+      riskScore: session.analysis.scamReport.riskScore,
+      riskLevel: session.analysis.scamReport.riskLevel,
+      biometricRequired: session.requireBiometric,
+      reasons,
+      amount: session.analysis.parsedAmount,
+      payee: payeeRefOf(session.payee),
+      engine: session.trace.engine,
+    });
   };
 
   // --------------------------------------------------------- transfer flow
@@ -322,8 +556,10 @@ export default function TrustPayApp() {
       setEvidenceByTicket((prev) => ({ ...prev, [ticketId]: evidence }));
     }
 
+    const sessionId = createClientId("SES");
+    const payee = meta.payee ?? null;
     setTransfer({
-      id: createClientId("SES"),
+      id: sessionId,
       analysis: result,
       commandText: meta.commandText,
       trace,
@@ -338,9 +574,30 @@ export default function TrustPayApp() {
       guardianDecidedAt: null,
       reportText: null,
       reallocation: null,
+      payee,
+      memo: meta.memo ?? null,
     });
     setGuardianApproveError(null);
     setBiometricRequest(null);
+
+    // TrustPay SDK `onBeforeTransferConfirm` → Decision Token cho Host App.
+    const reasonCodes = reasonCodesFrom({
+      redFlags: result.scamReport.redFlags,
+      policyReasons: policy.reasons,
+      riskLevel: result.scamReport.riskLevel,
+    });
+    emitDecision({
+      event: "onBeforeTransferConfirm",
+      requestId: sessionId,
+      decision: decisionFromRisk({ riskLevel: result.scamReport.riskLevel, held: highRiskHold }),
+      riskScore: result.scamReport.riskScore,
+      riskLevel: result.scamReport.riskLevel,
+      biometricRequired: requireBiometric,
+      reasons: highRiskHold ? [...reasonCodes, "COOLING_OFF_15S"] : reasonCodes,
+      amount: result.parsedAmount,
+      payee: payeeRefOf(payee),
+      engine: meta.trace.engine,
+    });
 
     if (highRiskHold) {
       setCoolingOpenedAt(nowMs);
@@ -357,6 +614,14 @@ export default function TrustPayApp() {
         title: t.toast.pushedToOps(result.scamReport.riskLevel, ticketId),
         description: t.toast.pushedToOpsDesc(money(result.parsedAmount)),
       });
+    }
+
+    // Vòng 4: Paste-to-Pay / Danh bạ 1 chạm → AN TOÀN thì cuộn thẳng tới mã VietQR thật.
+    if (pendingHandoffFocusRef.current) {
+      pendingHandoffFocusRef.current = false;
+      if (!isRisky && !highRiskHold && payee) {
+        focusArea("tp-real-handoff");
+      }
     }
   };
 
@@ -391,6 +656,12 @@ export default function TrustPayApp() {
 
     walletStore.setState((state) => applyDebit(state, tx));
     setTransfer((prev) => (prev && prev.id === session.id ? { ...prev, status: "completed" } : prev));
+    emitSessionDecision(
+      session,
+      "onTransferConfirm",
+      "ALLOW",
+      session.frozenAt !== null ? ["USER_CONFIRMED", "USER_BIOMETRIC_OVERRIDE"] : ["USER_CONFIRMED"],
+    );
     showToast({
       type: "success",
       title: t.toast.transferSuccess(money(amount)),
@@ -409,6 +680,7 @@ export default function TrustPayApp() {
     setTransfer((prev) => (prev && prev.id === session.id ? { ...prev, status: "cancelled" } : prev));
     setCoolingOpen(false);
     setBiometricRequest(null);
+    emitSessionDecision(session, "onTransferCancel", "BLOCK", ["USER_CANCELLED"]);
     showToast({ type: "info", title: t.toast.cancelled, description: t.toast.cancelledDesc });
   };
 
@@ -507,6 +779,7 @@ export default function TrustPayApp() {
     setTransfer((prev) =>
       prev && prev.id === session.id ? { ...prev, status: "guardian_blocked", guardianDecidedAt: decidedAt } : prev,
     );
+    emitSessionDecision(session, "onGuardianDecision", "BLOCK", ["GUARDIAN_BLOCKED"]);
     markTourStep(1);
     showToast({ type: "success", title: t.toast.guardianBlocked, description: t.toast.guardianBlockedDesc(ticketId) });
 
@@ -570,6 +843,7 @@ export default function TrustPayApp() {
     setTransfer((prev) =>
       prev && prev.id === session.id ? { ...prev, status: "completed", guardianDecidedAt: decidedAt } : prev,
     );
+    emitSessionDecision(session, "onGuardianDecision", "ALLOW", ["GUARDIAN_APPROVED"]);
     setGuardianApproveError(null);
     markTourStep(1);
     showToast({
@@ -786,6 +1060,7 @@ export default function TrustPayApp() {
       (session.status === "frozen" || session.status === "idle")
     ) {
       setTransfer((prev) => (prev && prev.id === session.id ? { ...prev, status: "ops_blocked" } : prev));
+      emitSessionDecision(session, "onOpsBlock", "BLOCK", ["OPS_BLOCKED"]);
       setCoolingOpen(false);
       showToast({ type: "warning", title: t.toast.opsResolvedHold, description: t.toast.opsResolvedHoldDesc });
       return;
@@ -861,6 +1136,22 @@ export default function TrustPayApp() {
       note: QR_DATA_TEXT.paidNote,
     };
     walletStore.setState((state) => applyDebit(state, tx));
+    const decodedQr = check.report.decoded;
+    emitDecision({
+      event: "onTransferConfirm",
+      requestId: check.id,
+      decision: "ALLOW",
+      riskScore: check.finalScore,
+      riskLevel: check.finalLevel,
+      biometricRequired: check.policy.requireBiometric,
+      reasons: ["QR_VERIFIED", "USER_CONFIRMED"],
+      amount: check.amount,
+      payee:
+        decodedQr?.bankBin && decodedQr.accountNumber
+          ? { bankBin: decodedQr.bankBin, accountNumber: decodedQr.accountNumber }
+          : null,
+      engine: "LOCAL_RULES",
+    });
     showToast({
       type: "success",
       title: t.toastExt.qrPaid(money(check.amount)),
@@ -879,6 +1170,100 @@ export default function TrustPayApp() {
       reasons: check.policy.reasons,
     });
   };
+
+  /** Soi mã VietQR xong → Decision Token `onQrInspected` (SAFE/WARNING → ALLOW, DANGER → BLOCK). */
+  const handleQrInspected = (check: QrCheckResult) => {
+    const decoded = check.report.decoded;
+    const reasons: SdkReasonCode[] =
+      check.verdict === "DANGER" ? ["QR_DANGER"] : check.verdict === "WARNING" ? ["QR_WARNING"] : ["QR_VERIFIED"];
+    if (check.report.blacklistMatches.length > 0) reasons.push("BLACKLIST_MATCH");
+    if (check.policy.requireBiometric && check.amount > 10_000_000) reasons.push("AMOUNT_OVER_10M_TT50");
+    emitDecision({
+      event: "onQrInspected",
+      requestId: check.id,
+      decision: check.verdict === "DANGER" ? "BLOCK" : "ALLOW",
+      riskScore: check.finalScore,
+      riskLevel: check.finalLevel,
+      biometricRequired: check.policy.requireBiometric,
+      reasons,
+      amount: check.amount,
+      payee:
+        decoded?.bankBin && decoded.accountNumber ? { bankBin: decoded.bankBin, accountNumber: decoded.accountNumber } : null,
+      engine: "LOCAL_RULES",
+    });
+  };
+
+  // ------------------------------------------------- Host App ↔ SDK (embed)
+
+  const exitEmbedMode = () => {
+    setEmbedMode(false);
+    urlEmbedRef.current = false;
+    setUrlEmbed(false);
+    if (isEmbedRequested(window.location.search)) {
+      // Bỏ `?embed=momo` khỏi URL để lần tải lại không tự bật lại.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("embed");
+      window.history.replaceState(window.history.state, "", url.toString());
+    }
+  };
+
+  const handleToggleEmbed = () => {
+    const next = !(preferencesStore.getSnapshot().embedMode || urlEmbedRef.current);
+    setShowOnboarding(false);
+    if (next) {
+      setEmbedMode(true);
+      setActiveTab("user-wallet");
+      setActiveAgent((current) => (current === "qr" ? "qr" : "transfer"));
+    } else {
+      exitEmbedMode();
+    }
+    showToast(
+      next
+        ? { type: "info", title: t.toastR3.embedOn, description: t.toastR3.embedOnDesc }
+        : { type: "info", title: t.toastR3.embedOff, description: t.toastR3.embedOffDesc },
+    );
+  };
+
+  /** Host gửi `TRUSTPAY_HOST_TRANSFER_REQUEST` → điền sẵn lệnh + người nhận để Lá chắn AI kiểm duyệt. */
+  const handleHostRequest = (request: HostTransferRequest) => {
+    const institution = findInstitution(request.institutionCode);
+    setPayeeDraft({
+      institutionCode: request.institutionCode,
+      accountNumber: request.accountNumber,
+      accountName: request.accountName,
+    });
+    setInputSeed((prev) => ({ nonce: prev.nonce + 1, text: buildHostCommandText(request), scenarioId: null }));
+    setShowOnboarding(false);
+    setActiveTab("user-wallet");
+    setActiveAgent("transfer");
+    setSdkEvents((prev) =>
+      [
+        {
+          id: createClientId("EVT"),
+          direction: "INBOUND" as const,
+          at: Date.now(),
+          summary: t.sdk.hostRequestLine(money(request.amount), institution?.shortName ?? request.institutionCode),
+          payload: {
+            type: "TRUSTPAY_HOST_TRANSFER_REQUEST",
+            requestId: request.requestId,
+            transfer: {
+              amount: request.amount,
+              bankBin: institution?.bin ?? null,
+              accountNumberMasked: maskRecipientForDisplay(request.accountNumber),
+              memo: request.memo,
+            },
+          },
+        },
+        ...prev,
+      ].slice(0, MAX_SDK_EVENTS),
+    );
+    focusArea("tp-transfer-panel");
+    showToast({ type: "info", title: t.toastR3.hostRequest, description: t.toastR3.hostRequestDesc });
+  };
+
+  useEffect(() => {
+    hostRequestHandlerRef.current = handleHostRequest;
+  });
 
   // ------------------------------------------- Copilot & Active Call Shield
 
@@ -907,6 +1292,212 @@ export default function TrustPayApp() {
     showToast({ type: "info", title: t.toastExt.callEnded, description: t.toastExt.callEndedDesc });
   };
 
+  // ------------------------------- Vòng 4 — Trung tâm Thanh toán Hợp nhất
+
+  /** "✨ Chế độ Đơn giản (Easy Mode)" | "⚡ Chế độ Đầy đủ (Pro Mode)". */
+  const handleModeChange = (mode: UiMode) => {
+    if (mode === hubStore.getSnapshot().uiMode) return;
+    setUiMode(mode);
+    setShowOnboarding(false);
+    setEasyPanel("home");
+    setCameraRequest(0);
+    if (mode === "easy") {
+      if (preferencesStore.getSnapshot().embedMode || urlEmbedRef.current) {
+        exitEmbedMode();
+      }
+      setActiveTab("user-wallet");
+      setFinopsOpen(false);
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    showToast(
+      mode === "easy"
+        ? { type: "info", title: t.toastR4.modeEasy, description: t.toastR4.modeEasyDesc }
+        : { type: "info", title: t.toastR4.modePro, description: t.toastR4.modeProDesc },
+    );
+  };
+
+  const handleToggleBalance = () => setBalanceHidden(!hubStore.getSnapshot().balanceHidden);
+
+  /** Easy Mode: 3 nút khổng lồ. */
+  const handleEasySelect = (panel: Exclude<EasyPanel, "home">) => {
+    setEasyPanel(panel);
+    if (panel === "scan") {
+      setActiveAgent("qr");
+      setCameraRequest((prev) => prev + 1);
+    } else if (panel === "transfer") {
+      setActiveAgent("transfer");
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleEasyBack = () => {
+    setEasyPanel("home");
+    setCameraRequest(0);
+  };
+
+  /**
+   * "📋 Dán tin nhắn / Ảnh để tự điền (Paste-to-Pay)": bóc tách Ngân hàng + STK + Số tiền + Tên
+   * + Nội dung → điền sẵn biểu mẫu và tự phân tích khi đủ thông tin. Lệnh gửi Lá chắn AI luôn kèm
+   * "Tin nhắn gốc" nên mọi dấu hiệu lừa đảo trong tin nhắn vẫn được soát (không hạ rủi ro).
+   */
+  const handlePasteToPay = (raw: string): boolean => {
+    const parsed = parsePaymentMessage(raw);
+    if (parsed.accountNumber === null && parsed.amount === null) {
+      return false;
+    }
+    const complete = isPasteComplete(parsed);
+    setPayeeDraft({
+      institutionCode: parsed.institutionCode ?? "",
+      accountNumber: parsed.accountNumber ?? "",
+      accountName: parsed.accountName ?? "",
+    });
+    setInputSeed((prev) => ({
+      nonce: prev.nonce + 1,
+      text: buildPasteCommand(parsed, raw),
+      scenarioId: null,
+      autoSubmit: complete,
+      paste: { found: parsed.found, missing: PASTE_REQUIRED_FIELDS.filter((field) => !parsed.found.includes(field)) },
+      memo: parsed.memo ?? derivePaymentMemo(""),
+    }));
+    pendingHandoffFocusRef.current = complete;
+    setShowOnboarding(false);
+    setActiveTab("user-wallet");
+    setActiveAgent("transfer");
+    if (hubStore.getSnapshot().uiMode === "easy") {
+      setEasyPanel("transfer");
+    }
+    focusArea("tp-transfer-panel");
+    showToast({ type: "info", title: t.toastR4.pasteFilled, description: t.toastR4.pasteFilledDesc });
+    return true;
+  };
+
+  /** Ảnh dán có mã VietQR → chuyển sang "Soi mã VietQR" và soi ngay chuỗi mã. */
+  const handlePasteQr = (payload: string) => {
+    qrExternalNonceRef.current += 1;
+    setQrExternal({ nonce: qrExternalNonceRef.current, payload });
+    setCameraRequest(0);
+    setShowOnboarding(false);
+    setActiveTab("user-wallet");
+    setActiveAgent("qr");
+    if (hubStore.getSnapshot().uiMode === "easy") {
+      setEasyPanel("scan");
+    }
+    focusArea("tp-qr-inspector");
+    showToast({ type: "info", title: t.toastR4.pasteFilled, description: t.paste.imageQr });
+  };
+
+  /** Danh bạ Tin cậy — chuyển 1 chạm: điền sẵn Ngân hàng + STK + tên, Lá chắn AI vẫn soát trước. */
+  const handlePickPayee = (payee: TrustedPayee, amount: number | null, memo: string, autoSubmit: boolean) => {
+    const runNow = autoSubmit && amount !== null;
+    setPayeeDraft({
+      institutionCode: payee.institutionCode,
+      accountNumber: payee.accountNumber,
+      accountName: payee.accountName,
+    });
+    setInputSeed((prev) => ({
+      nonce: prev.nonce + 1,
+      text: amount !== null ? buildTransferCommand(amount, payee.label, memo) : "",
+      scenarioId: null,
+      autoSubmit: runNow,
+    }));
+    pendingHandoffFocusRef.current = runNow;
+    touchTrustedPayee(payee.id, new Date().toISOString());
+    setShowOnboarding(false);
+    setActiveTab("user-wallet");
+    setActiveAgent("transfer");
+    focusArea("tp-transfer-panel");
+    showToast({ type: "info", title: t.toastR4.payeeFilled(payee.label), description: t.toastR4.payeeFilledDesc });
+  };
+
+  // ------------------------------- Vòng 5 — Cinematic Hero ↔ Không gian làm việc
+
+  /** Mở mượt mà từ Hero xuống Không gian làm việc (giảm chuyển động → chuyển ngay). */
+  const dismissHero = () => {
+    if (heroTimerRef.current !== null) {
+      window.clearTimeout(heroTimerRef.current);
+      heroTimerRef.current = null;
+    }
+    if (reducedMotion) {
+      setHeroLeaving(false);
+      setHeroVisible(false);
+      return;
+    }
+    setHeroLeaving(true);
+    heroTimerRef.current = window.setTimeout(() => {
+      heroTimerRef.current = null;
+      setHeroVisible(false);
+      setHeroLeaving(false);
+    }, HERO_LEAVE_MS);
+  };
+
+  /** Bấm logo TRUSTPAY AI → quay lại màn hình Hero (trạng thái Ví được giữ nguyên). */
+  const handleReturnToHero = () => {
+    if (heroTimerRef.current !== null) {
+      window.clearTimeout(heroTimerRef.current);
+      heroTimerRef.current = null;
+    }
+    setHeroLeaving(false);
+    setHeroVisible(true);
+  };
+
+  /** Mục điều hướng, CTA và 4 trụ cột tính năng trên Hero → đúng khu vực trong Không gian làm việc. */
+  const handleHeroNavigate = (target: HeroTarget) => {
+    dismissHero();
+    setShowOnboarding(false);
+    const easy = hubStore.getSnapshot().uiMode === "easy";
+
+    if (target === "ops") {
+      if (easy) setUiMode("pro");
+      setActiveTab("fintech-ops");
+      window.scrollTo({ top: 0 });
+      return;
+    }
+    if (target === "tt50") {
+      if (easy) setUiMode("pro");
+      setActiveTab("user-wallet");
+      setFinopsOpen(true);
+      return;
+    }
+
+    setActiveTab("user-wallet");
+    if (target === "wallet") {
+      setActiveAgent("transfer");
+      if (easy) setEasyPanel("home");
+      window.scrollTo({ top: 0 });
+    } else if (target === "qr" || (target === "vietqr" && easy)) {
+      setActiveAgent("qr");
+      setCameraRequest(0);
+      if (easy) {
+        setEasyPanel("scan");
+        window.scrollTo({ top: 0 });
+      } else {
+        focusArea("tp-qr-inspector");
+      }
+    } else if (target === "vietqr") {
+      // Pro: thanh "Tài khoản & Ví liên kết" + Real VietQR Handoff ngay dưới biểu mẫu chuyển tiền.
+      setActiveAgent("transfer");
+      focusArea("tp-linked-accounts");
+    } else if (target === "family") {
+      setActiveAgent("transfer");
+      if (easy) {
+        setEasyPanel("transfer");
+        focusArea("tp-call-shield");
+      } else {
+        focusArea("tp-guardian-card");
+      }
+    } else if (target === "guardian") {
+      // Điền sẵn Kịch bản 3 (mạo danh công an + STK Blacklist) để trình diễn Hạ nhiệt 15 giây.
+      setActiveAgent("transfer");
+      if (easy) setEasyPanel("transfer");
+      seedScenario3();
+      focusArea("tp-transfer-panel");
+    } else {
+      setActiveAgent("transfer");
+      if (easy) setEasyPanel("transfer");
+      focusArea("tp-transfer-panel");
+    }
+  };
+
   // --------------------------------------------- Hướng dẫn sử dụng & FinOps
 
   const handleOpenGuide = (topic: GuideTopicIndex = 0) => {
@@ -917,6 +1508,20 @@ export default function TrustPayApp() {
 
   const handleGuideTryNow = (topic: GuideTopicIndex) => {
     setGuideTopic(null);
+    // Mở hướng dẫn từ Hero → "Dùng thử ngay" đưa thẳng xuống Không gian làm việc.
+    if (heroVisible) {
+      dismissHero();
+    }
+    // Các bài hướng dẫn trỏ tới bảng của Chế độ Đầy đủ (Copilot, Soi mã, Safe Shopping, Ops).
+    if (hubStore.getSnapshot().uiMode === "easy") {
+      setUiMode("pro");
+      setEasyPanel("home");
+      setCameraRequest(0);
+    }
+    // Chế độ nhúng chỉ có luồng Chuyển tiền (Call Shield) và Soi mã VietQR → các chủ đề khác cần giao diện đầy đủ.
+    if ((preferencesStore.getSnapshot().embedMode || urlEmbedRef.current) && topic !== 1 && topic !== 3) {
+      exitEmbedMode();
+    }
     if (topic === 0) {
       openAgent("transfer", "tp-copilot");
     } else if (topic === 1) {
@@ -939,8 +1544,20 @@ export default function TrustPayApp() {
     resetEpochRef.current += 1;
     walletStore.reset();
     featureStore.reset();
+    // Vòng 4: xóa tài khoản liên kết, danh bạ tin cậy, cấu hình khóa, ẩn số dư — giữ chế độ Easy/Pro đang dùng.
+    const keepMode = hubStore.getSnapshot().uiMode;
+    hubStore.reset();
+    setUiMode(keepMode);
+    appLockSession.lock();
+    setQrGateOpen(false);
+    setQrExternal(null);
+    setCameraRequest(0);
+    setEasyPanel("home");
+    pendingHandoffFocusRef.current = false;
     setQrVerifiedCheckId(null);
     setLastTrace(null);
+    setSdkEvents([]);
+    setPayeeDraft(EMPTY_PAYEE_DRAFT);
     setTransfer(null);
     setIsAnalyzing(false);
     setCoolingOpen(false);
@@ -1009,10 +1626,200 @@ export default function TrustPayApp() {
           : "pending";
 
   const isTransferHighlighted = highlightTarget === "tp-transfer-panel";
+  const embedMode = prefs.embedMode || urlEmbed;
+
+  // Vòng 5 — Hero chỉ hiện ngoài chế độ nhúng SDK. Khi Hero phủ màn hình, Không gian làm việc
+  // được ẩn (vẫn gắn trong DOM → giữ nguyên mọi trạng thái) và trang không cuộn.
+  const heroShown = heroVisible && !embedMode;
+  const workspaceHidden = heroShown && !heroLeaving;
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle("tp-hero-open", workspaceHidden);
+    if (!heroShown) {
+      // React đã nắm quyền hiển thị → bỏ lớp ẩn Hero do script khởi động đặt (để logo mở lại được Hero).
+      root.classList.remove("tp-skip-hero");
+    }
+  }, [workspaceHidden, heroShown]);
+
+  // Vòng 3 — chỉ mở chuyển tiền THẬT khi AN TOÀN (đã qua sinh trắc nếu bắt buộc) hoặc Người giám hộ cho phép.
+  const handoffState: HandoffState = (() => {
+    if (!transfer || transfer.status === "cancelled") return { kind: "hidden" };
+    if (transfer.status === "guardian_blocked" || transfer.status === "ops_blocked") {
+      return { kind: "locked", reason: "blocked" };
+    }
+    const guardianApproved = transfer.status === "completed" && transfer.guardianDecidedAt !== null;
+    const assessedSafe =
+      transfer.analysis.scamReport.riskLevel === "LOW" && (transfer.status === "idle" || transfer.status === "completed");
+    if (!guardianApproved && !assessedSafe) return { kind: "locked", reason: "risk" };
+    if (!guardianApproved && transfer.requireBiometric && !transfer.biometricVerified && transfer.status !== "completed") {
+      return { kind: "locked", reason: "biometric" };
+    }
+    if (!transfer.payee) return { kind: "need-payee" };
+    return { kind: "ready", via: guardianApproved ? "guardian" : "safe", guardianName: wallet.guardian.name };
+  })();
+
+  const latestToken = sdkEvents.find((record) => record.direction === "OUTBOUND");
+  const latestDecisionToken = latestToken && latestToken.direction === "OUTBOUND" ? latestToken.token : null;
+  const hostSettlementRef =
+    latestDecisionToken &&
+    latestDecisionToken.decision === "ALLOW" &&
+    (latestDecisionToken.event === "onTransferConfirm" ||
+      (latestDecisionToken.event === "onGuardianDecision" && transfer?.status === "completed"))
+      ? `NAPAS-${latestDecisionToken.nonce.slice(0, 8).toUpperCase()}`
+      : null;
+
+  // Vòng 4 — Easy/Pro (chế độ nhúng SDK luôn ưu tiên), nguồn tiền mặc định, khóa sinh trắc học, người nhận mẫu.
+  const easyMode = hub.uiMode === "easy" && !embedMode;
+  const defaultSource =
+    hub.linkedAccounts.find((account) => account.id === hub.defaultSourceId) ?? hub.linkedAccounts[0];
+  const sourceLabel = defaultSource ? linkedAccountLabel(defaultSource, t.hub.masked) : "";
+  const lockEnabled = hub.appLock.enabled;
+  const appLocked = lockEnabled && unlockedAt === null;
+  const qrUnlockFresh = unlockedAt !== null && expiredUnlockAt !== unlockedAt;
+  const qrNeedsUnlock = lockEnabled && !qrUnlockFresh;
+  const sessionPayee = transfer?.payee ?? null;
+  const sessionPayeeKey = sessionPayee ? `${sessionPayee.institutionCode}:${sessionPayee.accountNumber}` : null;
+  const samplePayee =
+    sessionPayeeKey !== null &&
+    hub.trustedPayees.some((item) => item.demo && `${item.institutionCode}:${item.accountNumber}` === sessionPayeeKey);
+  const showSavePayee =
+    !embedMode &&
+    handoffState.kind === "ready" &&
+    sessionPayee !== null &&
+    !samplePayee &&
+    !isTrustedPayeeSaved(hub, sessionPayee.institutionCode, sessionPayee.accountNumber);
+
+  const showUnlockedToast = () =>
+    showToast({ type: "success", title: t.toastR4.unlocked, description: t.toastR4.unlockedDesc });
+
+  const transferPanel = (
+    <div
+      id="tp-transfer-panel"
+      className={`flex flex-col gap-4 rounded-3xl ${isTransferHighlighted ? "tp-highlight" : ""}`}
+    >
+      <CallShieldBar onStart={handleStartCall} onEnd={handleEndCall} highlighted={highlightTarget === "tp-call-shield"} />
+      <TransactionInputPanel
+        key={`${resetKey}-${inputSeed.nonce}`}
+        budgets={wallet.budgets}
+        blacklist={wallet.blacklist}
+        onAnalysisComplete={handleAnalysisComplete}
+        onAnalyzingChange={handleAnalyzingChange}
+        initialCommandText={inputSeed.text}
+        initialScenarioId={inputSeed.scenarioId}
+        highlightScenarioId={isTransferHighlighted && inputSeed.scenarioId === "scenario-3" ? "scenario-3" : null}
+        payeeDraft={payeeDraft}
+        onPayeeDraftChange={setPayeeDraft}
+        initialAutoSubmit={inputSeed.autoSubmit ?? false}
+        initialPasteSummary={inputSeed.paste ?? null}
+        initialMemo={inputSeed.memo}
+        onPasteToPay={handlePasteToPay}
+        onPasteQr={handlePasteQr}
+      />
+    </div>
+  );
+
+  const resultPanel = (
+    <AiShieldResultPanel
+      analysis={transfer?.analysis ?? null}
+      walletBalance={wallet.balance}
+      isAnalyzing={isAnalyzing}
+      transactionStatus={transfer?.status ?? "idle"}
+      biometricVerified={transfer?.biometricVerified ?? false}
+      onConfirmTransfer={handleConfirmTransfer}
+      onRequestBiometric={handleRequestTransferBiometric}
+      onCancelTransaction={handleCancelTransfer}
+      trace={transfer?.trace ?? null}
+      effectiveCategory={transfer?.category}
+      requireBiometric={transfer?.requireBiometric}
+      policy={transfer?.policy ?? null}
+      budgets={wallet.budgets}
+      reallocation={transfer?.reallocation ?? null}
+      onReallocateBudget={(plan) => handleReallocate(plan, "transfer")}
+      onOpenCoolingOff={handleOpenCooling}
+      onDownloadReport={handleDownloadReport}
+      reportReady={Boolean(transfer?.reportText)}
+      guardianName={wallet.guardian.name}
+    />
+  );
+
+  const handoffPanel = (
+    <>
+      <RealPaymentHandoff
+        key={transfer?.id ?? "no-session"}
+        state={handoffState}
+        payee={transfer?.payee ?? null}
+        amount={transfer?.analysis.parsedAmount ?? 0}
+        defaultMemo={transfer ? (transfer.memo ?? derivePaymentMemo(transfer.commandText)) : ""}
+        onRequestPayee={() => focusArea("tp-payee-fields")}
+        onCopied={(ok) =>
+          showToast(
+            ok
+              ? { type: "success", title: t.toastR3.handoffCopied, description: t.toastR3.handoffCopiedDesc }
+              : { type: "warning", title: t.toastR3.copyFailed, description: t.toastR3.copyFailedDesc },
+          )
+        }
+        onPngSaved={() => showToast({ type: "info", title: t.toastR3.pngSaved, description: t.toastR3.pngSavedDesc })}
+        highlighted={highlightTarget === "tp-real-handoff"}
+        locked={qrNeedsUnlock}
+        onRequestUnlock={() => setQrGateOpen(true)}
+        preferredPayerApp={defaultSource?.institutionCode ?? null}
+        samplePayee={samplePayee}
+      />
+      {showSavePayee && sessionPayee && (
+        <SaveTrustedPayeeCta
+          key={`save-${transfer?.id ?? "none"}`}
+          payee={sessionPayee}
+          suggestedLabel={
+            sessionPayee.accountName || data(transfer?.analysis.recipient ?? "").replace(/\s*\([^)]*\)\s*$/, "")
+          }
+          onSaved={(label) =>
+            showToast({ type: "success", title: t.toastR4.payeeSaved(label), description: t.toastR4.payeeSavedDesc })
+          }
+        />
+      )}
+    </>
+  );
+
+  const qrPanel = (
+    <div className={`rounded-3xl ${highlightTarget === "tp-qr-inspector" ? "tp-highlight" : ""}`}>
+      <QrInspector
+        key={`qr-${resetKey}`}
+        budgets={wallet.budgets}
+        blacklist={wallet.blacklist}
+        walletBalance={wallet.balance}
+        getDailyOutflow={getDailyOutflow}
+        verifiedCheckId={qrVerifiedCheckId}
+        onDanger={handleQrDanger}
+        onPay={handleQrPay}
+        onRequestBiometric={handleQrRequestBiometric}
+        onInspected={handleQrInspected}
+        cameraRequest={cameraRequest}
+        externalPayload={qrExternal}
+        onExternalPayloadHandled={() => setQrExternal(null)}
+      />
+    </div>
+  );
 
   return (
-    <div className="flex min-h-screen flex-col overflow-x-clip bg-slate-50">
+    <div className="tp-shell flex min-h-screen flex-col overflow-x-clip bg-slate-50">
       <ThemeController />
+      <PwaRegister />
+
+      {/* Vòng 5 — nền video sợi quang cố định phía sau (không dùng trong iframe nhúng SDK). */}
+      {!embedMode && (
+        <CinematicBackdrop
+          mode={workspaceHidden ? "hero" : "workspace"}
+          playing={heroShown || resolvedTheme === "dark"}
+        />
+      )}
+
+      {/* Không gian làm việc: ẩn & khóa tương tác khi Hero phủ màn hình (vẫn giữ trạng thái). */}
+      <div
+        className="tp-workspace flex min-h-screen flex-1 flex-col"
+        data-hidden={workspaceHidden ? "true" : "false"}
+        inert={workspaceHidden}
+      >
       <AppHeader
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -1022,17 +1829,87 @@ export default function TrustPayApp() {
         onOpenGuide={() => handleOpenGuide(0)}
         guideSeen={prefs.guideSeen}
         onOpenFinOps={() => setFinopsOpen(true)}
+        embedMode={embedMode}
+        onToggleEmbed={handleToggleEmbed}
+        uiMode={embedMode ? "pro" : hub.uiMode}
+        onModeChange={embedMode ? undefined : handleModeChange}
+        onAppInstalled={() =>
+          showToast({ type: "success", title: t.toastR4.installed, description: t.toastR4.installedDesc })
+        }
+        onLogoClick={embedMode ? undefined : handleReturnToHero}
       />
 
-      <ToastNotice toast={toast} onDismiss={() => setToast(null)} />
-
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 pb-28 sm:px-6 lg:px-8">
+        {easyMode ? (
+          /* Vòng 4 — ✨ Chế độ Đơn giản (Easy Mode): chữ to, 3 nút hành động khổng lồ */
+          <EasyHome
+            balance={wallet.balance}
+            balanceHidden={hub.balanceHidden}
+            onToggleBalance={handleToggleBalance}
+            sourceLabel={sourceLabel}
+            panel={easyPanel}
+            onSelectPanel={handleEasySelect}
+            onBack={handleEasyBack}
+          >
+            {easyPanel === "scan" && qrPanel}
+            {easyPanel === "transfer" && (
+              <div className="flex flex-col gap-5">
+                <TrustedPayees
+                  payees={hub.trustedPayees}
+                  onPick={handlePickPayee}
+                  highlighted={highlightTarget === "tp-trusted-payees"}
+                />
+                <p className="text-center text-base font-bold text-slate-600">{t.easy.normalTransfer}</p>
+                {transferPanel}
+                {resultPanel}
+                {handoffPanel}
+              </div>
+            )}
+            {easyPanel === "check" && <AiCheckHelper budgets={wallet.budgets} blacklist={wallet.blacklist} />}
+          </EasyHome>
+        ) : embedMode ? (
+          /* Vòng 3 — 🔌 Chế độ Nhúng SDK (MoMo Embedded): Host App bao bọc TrustPay AI SDK */
+          <EmbeddedSdkShell
+            balance={wallet.balance}
+            latestToken={latestDecisionToken}
+            hostSettlementRef={hostSettlementRef}
+            sdkTab={activeAgent === "qr" ? "qr" : "transfer"}
+            onSdkTabChange={(tab: EmbeddedSdkTab) => setActiveAgent(tab === "qr" ? "qr" : "transfer")}
+            events={sdkEvents}
+            onClearEvents={() => setSdkEvents([])}
+          >
+            {activeAgent === "qr" ? (
+              qrPanel
+            ) : (
+              <>
+                {transferPanel}
+                {resultPanel}
+                {handoffPanel}
+              </>
+            )}
+          </EmbeddedSdkShell>
+        ) : (
+          <>
         {/* Tab 1 — Ví Người Dùng (giữ trạng thái khi chuyển tab) */}
         <section
           aria-label={t.header.walletTab}
           className={activeTab === "user-wallet" ? "grid grid-cols-1 items-start gap-6 lg:grid-cols-12" : "hidden"}
         >
-          <div className="lg:col-span-4">
+          {/* Vòng 4: thanh thẻ ngang "Tài khoản & Ví liên kết" ở đầu Ví */}
+          <div className="min-w-0 lg:col-span-12">
+            <LinkedAccountsBar
+              accounts={hub.linkedAccounts}
+              defaultSourceId={hub.defaultSourceId}
+              onSourceChanged={(label) =>
+                showToast({ type: "success", title: t.toastR4.sourceChanged(label), description: t.toastR4.sourceChangedDesc })
+              }
+              onAccountAdded={(label) =>
+                showToast({ type: "success", title: t.toastR4.accountAdded(label), description: t.toastR4.accountAddedDesc })
+              }
+            />
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-6 lg:col-span-4">
             <WalletSidebar
               walletBalance={wallet.balance}
               budgets={wallet.budgets}
@@ -1042,7 +1919,27 @@ export default function TrustPayApp() {
               onSaveGuardian={handleSaveGuardian}
               onAddBlacklistEntry={handleAddBlacklistEntry}
               guardianHighlighted={highlightTarget === "tp-guardian-card"}
+              balanceHidden={hub.balanceHidden}
+              onToggleBalance={handleToggleBalance}
             />
+            <div className={`rounded-3xl ${highlightTarget === "tp-split-bill" ? "tp-highlight" : ""}`}>
+              <SplitBill
+                key={`split-${resetKey}`}
+                accounts={hub.linkedAccounts}
+                defaultSourceId={hub.defaultSourceId}
+                requireUnlock={qrNeedsUnlock}
+                onRequestUnlock={() => setQrGateOpen(true)}
+                onCopied={(ok) =>
+                  showToast(
+                    ok
+                      ? { type: "success", title: t.toastR4.splitCopied, description: t.toastR4.splitCopiedDesc }
+                      : { type: "warning", title: t.toastR3.copyFailed, description: t.toastR3.copyFailedDesc },
+                  )
+                }
+                onPngSaved={() => showToast({ type: "info", title: t.toastR3.pngSaved, description: t.toastR3.pngSavedDesc })}
+              />
+            </div>
+            <AppLockSettings onToast={showToast} />
           </div>
 
           <div className="flex flex-col gap-6 lg:col-span-8">
@@ -1063,67 +1960,19 @@ export default function TrustPayApp() {
                 onOpenCallShield={() => openAgent("transfer", "tp-call-shield")}
                 highlighted={highlightTarget === "tp-copilot"}
               />
-              <div
-                id="tp-transfer-panel"
-                className={`flex flex-col gap-4 rounded-3xl ${isTransferHighlighted ? "tp-highlight" : ""}`}
-              >
-                <CallShieldBar
-                  onStart={handleStartCall}
-                  onEnd={handleEndCall}
-                  highlighted={highlightTarget === "tp-call-shield"}
-                />
-                <TransactionInputPanel
-                  key={`${resetKey}-${inputSeed.nonce}`}
-                  budgets={wallet.budgets}
-                  blacklist={wallet.blacklist}
-                  onAnalysisComplete={handleAnalysisComplete}
-                  onAnalyzingChange={handleAnalyzingChange}
-                  initialCommandText={inputSeed.text}
-                  initialScenarioId={inputSeed.scenarioId}
-                  highlightScenarioId={
-                    isTransferHighlighted && inputSeed.scenarioId === "scenario-3" ? "scenario-3" : null
-                  }
-                />
-              </div>
-
-              <AiShieldResultPanel
-                analysis={transfer?.analysis ?? null}
-                walletBalance={wallet.balance}
-                isAnalyzing={isAnalyzing}
-                transactionStatus={transfer?.status ?? "idle"}
-                biometricVerified={transfer?.biometricVerified ?? false}
-                onConfirmTransfer={handleConfirmTransfer}
-                onRequestBiometric={handleRequestTransferBiometric}
-                onCancelTransaction={handleCancelTransfer}
-                trace={transfer?.trace ?? null}
-                effectiveCategory={transfer?.category}
-                requireBiometric={transfer?.requireBiometric}
-                policy={transfer?.policy ?? null}
-                budgets={wallet.budgets}
-                reallocation={transfer?.reallocation ?? null}
-                onReallocateBudget={(plan) => handleReallocate(plan, "transfer")}
-                onOpenCoolingOff={handleOpenCooling}
-                onDownloadReport={handleDownloadReport}
-                reportReady={Boolean(transfer?.reportText)}
-                guardianName={wallet.guardian.name}
+              <TrustedPayees
+                payees={hub.trustedPayees}
+                onPick={handlePickPayee}
+                highlighted={highlightTarget === "tp-trusted-payees"}
               />
+              {transferPanel}
+              {resultPanel}
+              {handoffPanel}
             </div>
 
             <div className={activeAgent === "qr" ? "flex flex-col gap-4" : "hidden"}>
               <QuickTip id="qr" />
-              <div className={`rounded-3xl ${highlightTarget === "tp-qr-inspector" ? "tp-highlight" : ""}`}>
-                <QrInspector
-                  key={`qr-${resetKey}`}
-                  budgets={wallet.budgets}
-                  blacklist={wallet.blacklist}
-                  walletBalance={wallet.balance}
-                  getDailyOutflow={getDailyOutflow}
-                  verifiedCheckId={qrVerifiedCheckId}
-                  onDanger={handleQrDanger}
-                  onPay={handleQrPay}
-                  onRequestBiometric={handleQrRequestBiometric}
-                />
-              </div>
+              {qrPanel}
             </div>
 
             <div
@@ -1202,14 +2051,30 @@ export default function TrustPayApp() {
             highlightBanner={highlightTarget === "tp-anomaly-banner"}
           />
         </section>
+          </>
+        )}
       </main>
 
-      {!showOnboarding && (
+      {!showOnboarding && !embedMode && !easyMode && !heroShown && (
         <QuickTour
           collapsed={prefs.tourCollapsed}
           onToggleCollapsed={() => setTourCollapsed(!prefs.tourCollapsed)}
           completed={tourDone}
           onStep={handleTourStep}
+        />
+      )}
+      </div>
+
+      <ToastNotice toast={toast} onDismiss={() => setToast(null)} />
+
+      {/* Vòng 5 — Tầng 1: màn hình chào Cinematic Hero toàn khung nhìn. */}
+      {heroShown && (
+        <HeroLanding
+          leaving={heroLeaving}
+          easyMode={hub.uiMode === "easy"}
+          onNavigate={handleHeroNavigate}
+          onToggleEasy={() => handleModeChange(hub.uiMode === "easy" ? "pro" : "easy")}
+          onOpenGuide={() => handleOpenGuide(0)}
         />
       )}
 
@@ -1232,6 +2097,10 @@ export default function TrustPayApp() {
           onUseWebcam={handleCoolingUseWebcam}
           onCancelTransaction={handleCancelTransfer}
           onDownloadReport={handleDownloadReport}
+          onOpenRealHandoff={() => {
+            setCoolingOpen(false);
+            focusArea("tp-real-handoff");
+          }}
         />
       )}
 
@@ -1252,11 +2121,28 @@ export default function TrustPayApp() {
         <UserGuideModal initialTopic={guideTopic} onClose={closeGuide} onTryNow={handleGuideTryNow} />
       )}
 
-      {finopsOpen && <SecurityFinOpsPanel onClose={closeFinops} lastTrace={lastTrace ?? transfer?.trace ?? null} />}
+      {finopsOpen && !easyMode && (
+        <SecurityFinOpsPanel onClose={closeFinops} lastTrace={lastTrace ?? transfer?.trace ?? null} />
+      )}
 
-      {showOnboarding && (
+      {showOnboarding && !embedMode && !easyMode && !appLocked && (
         <WelcomeOnboarding onChooseRole={handleChooseRole} onClose={() => setShowOnboarding(false)} />
       )}
+
+      {/* Vòng 4 — Xác thực trước khi tạo mã VietQR (mở khóa còn hiệu lực 2 phút). */}
+      {qrGateOpen && !appLocked && (
+        <AppLockModal
+          purpose="qr"
+          onUnlocked={() => {
+            setQrGateOpen(false);
+            showUnlockedToast();
+          }}
+          onCancel={() => setQrGateOpen(false)}
+        />
+      )}
+
+      {/* Vòng 4 — Khóa ứng dụng bằng Vân tay / FaceID thiết bị (phiên mở khóa chỉ nằm trong bộ nhớ). */}
+      {appLocked && <AppLockModal purpose="app" onUnlocked={showUnlockedToast} />}
     </div>
   );
 }

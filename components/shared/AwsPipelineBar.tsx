@@ -48,6 +48,7 @@ export default function AwsPipelineBar({ trace, className = "" }: AwsPipelineBar
     <div
       role="group"
       aria-label={t.pipeline.title}
+      data-tp-tech="true"
       className={`rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-white shadow-inner ${className}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">

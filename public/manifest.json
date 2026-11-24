@@ -1,0 +1,24 @@
+{
+  "name": "TrustPay AI — Trung tâm Thanh toán Hợp nhất & Lá chắn chống lừa đảo",
+  "short_name": "TrustPay AI",
+  "description": "Quản lý mọi ngân hàng tại một nơi, Lá chắn AI soát lừa đảo trước khi chuyển tiền, VietQR thật, chia tiền nhóm.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#02060f",
+  "theme_color": "#02060f",
+  "lang": "vi",
+  "dir": "ltr",
+  "categories": ["finance", "security", "productivity"],
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" },
+    { "src": "/apple-icon", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Quét QR trả tiền", "short_name": "Quét QR", "url": "/?action=scan" },
+    { "name": "Chia tiền nhóm", "short_name": "Chia tiền", "url": "/?action=split" }
+  ]
+}

@@ -32,6 +32,7 @@ import { createClientId, resolveWalletCategory } from "@/lib/wallet/ledger";
 import { formatLatency } from "@/lib/wallet/format";
 import { setLastQrPayload, useFeatureState } from "@/lib/features/feature-store";
 import { useI18n } from "@/components/i18n/I18nProvider";
+import CameraQrScanner from "@/components/payments/CameraQrScanner";
 
 export interface QrCheckResult {
   id: string;
@@ -55,10 +56,18 @@ export interface QrInspectorProps {
   /** Thanh toán thật (trừ số dư + hạn mức); trả về true nếu thành công. */
   onPay: (check: QrCheckResult) => boolean;
   onRequestBiometric: (check: QrCheckResult) => void;
+  /** Vòng 3: báo kết quả soi mã cho TrustPay SDK (Decision Token `onQrInspected`). */
+  onInspected?: (check: QrCheckResult) => void;
+  /** Vòng 4: đổi giá trị (> 0) để mở thẳng Camera quét QR (Easy Mode "📷 Quét QR trả tiền"). */
+  cameraRequest?: number;
+  /** Vòng 4: chuỗi mã đọc được từ ảnh dán ở Paste-to-Pay → soi ngay (mỗi `nonce` một lần). */
+  externalPayload?: { nonce: number; payload: string } | null;
+  /** Báo đã nhận `externalPayload` để cha xóa đi (tránh soi lại khi panel remount). */
+  onExternalPayloadHandled?: () => void;
 }
 
 type ImageStatus = "idle" | "decoding" | "decoded" | "unsupported" | "not-found";
-type InputSource = "sample" | "paste" | "image";
+type InputSource = "sample" | "paste" | "image" | "camera";
 
 interface ContextState {
   status: "idle" | "pending" | "done" | "failed";
@@ -136,6 +145,10 @@ export default function QrInspector({
   onDanger,
   onPay,
   onRequestBiometric,
+  onInspected,
+  cameraRequest = 0,
+  externalPayload = null,
+  onExternalPayloadHandled,
 }: QrInspectorProps) {
   const { t, money, category: categoryLabel, data } = useI18n();
   const features = useFeatureState();
@@ -153,6 +166,14 @@ export default function QrInspector({
   const fileRef = useRef<HTMLInputElement | null>(null);
   const restoredRef = useRef(false);
   const runRef = useRef(0);
+  const [cameraOpen, setCameraOpen] = useState(false);
+
+  // Easy Mode: mở thẳng camera khi người dùng bấm "📷 Quét QR trả tiền".
+  useEffect(() => {
+    if (cameraRequest <= 0) return;
+    const timer = window.setTimeout(() => setCameraOpen(true), 0);
+    return () => window.clearTimeout(timer);
+  }, [cameraRequest]);
   // Một mã nguy hiểm chỉ tạo một ticket Ops trong phiên (soi lại → dùng lại mã ticket).
   const flaggedRef = useRef<Record<string, string>>({});
 
@@ -214,6 +235,9 @@ export default function QrInspector({
       if (options.remote && localCheck.verdict === "DANGER") {
         setTicketId(flagDanger(localCheck));
       }
+      if (options.remote) {
+        onInspected?.(localCheck);
+      }
       return;
     }
 
@@ -233,12 +257,14 @@ export default function QrInspector({
       if (merged.verdict === "DANGER") {
         setTicketId(flagDanger(merged));
       }
+      onInspected?.(merged);
     } catch {
       if (runId !== runRef.current) return;
       setContext({ status: "failed", score: null, trace: null });
       if (localCheck.verdict === "DANGER") {
         setTicketId(flagDanger(localCheck));
       }
+      onInspected?.(localCheck);
     }
   };
 
@@ -254,6 +280,23 @@ export default function QrInspector({
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedPayload]);
+
+  // Vòng 4 — Paste-to-Pay: ảnh dán có mã VietQR → soi ngay chuỗi mã (giải mã trên máy + Lá chắn AI).
+  const externalNonce = externalPayload?.nonce ?? 0;
+  const externalText = externalPayload?.payload ?? "";
+  useEffect(() => {
+    if (externalNonce <= 0 || !externalText.trim()) return;
+    const timer = window.setTimeout(() => {
+      setPayload(externalText);
+      setImageStatus("idle");
+      setImageMs(null);
+      setCameraOpen(false);
+      void runInspection(externalText, "image");
+      onExternalPayloadHandled?.();
+    }, 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalNonce]);
 
   const handleSample = (id: QrSampleId) => {
     const sample = QR_SAMPLES.find((item) => item.id === id);
@@ -392,6 +435,13 @@ export default function QrInspector({
           >
             {context.status === "pending" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanLine className="h-4 w-4" />}
             {context.status === "pending" ? t.qr.inspecting : t.qr.inspect}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCameraOpen(true)}
+            className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-sky-600 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-sky-700"
+          >
+            {t.camera.open}
           </button>
           <button
             type="button"
@@ -586,7 +636,7 @@ export default function QrInspector({
 
           {/* Bảng TLV (cuộn ngang trên điện thoại) */}
           {tlvRows.length > 0 && (
-            <details className="group rounded-2xl border border-slate-200 bg-white">
+            <details data-tp-tech="true" className="group rounded-2xl border border-slate-200 bg-white">
               <summary className="cursor-pointer list-none px-4 py-3 text-xs font-bold text-slate-700">
                 {t.qr.tlvTitle} ({tlvRows.length})
               </summary>
@@ -620,14 +670,14 @@ export default function QrInspector({
       )}
 
       {/* Thanh luồng công nghệ */}
-      <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-white">
+      <div data-tp-tech="true" className="mt-5 rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-white">
         <ol className="flex flex-col gap-2 text-[11px] sm:flex-row sm:flex-wrap sm:items-center">
           <li className="flex items-center gap-1.5">
             <span className="h-2 w-2 shrink-0 rounded-full bg-sky-400" />
             <span className="font-bold">{t.qr.pipeline.rekognition}</span>
             <span className="text-slate-300">{t.qr.pipeline.rekognitionRole}</span>
             <span className="text-slate-400">
-              · {source === "image" ? `${t.qr.pipeline.fromImage}${imageMs !== null ? ` ${formatLatency(imageMs)}` : ""}` : t.qr.pipeline.skipped}
+              · {source === "image" || source === "camera" ? `${t.qr.pipeline.fromImage}${imageMs !== null ? ` ${formatLatency(imageMs)}` : ""}` : t.qr.pipeline.skipped}
             </span>
           </li>
           <li aria-hidden="true" className="hidden text-slate-500 sm:block">
@@ -665,6 +715,18 @@ export default function QrInspector({
           </li>
         </ol>
       </div>
+
+      {cameraOpen && (
+        <CameraQrScanner
+          onClose={() => setCameraOpen(false)}
+          onDetected={(raw) => {
+            setCameraOpen(false);
+            setImageStatus("idle");
+            setPayload(raw);
+            void runInspection(raw, "camera");
+          }}
+        />
+      )}
     </section>
   );
 }

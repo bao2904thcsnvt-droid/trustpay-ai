@@ -60,6 +60,8 @@ export interface CoolingOffModalProps {
   onUseWebcam: () => void;
   onCancelTransaction: () => void;
   onDownloadReport: () => void;
+  /** Vòng 3: sau khi Người giám hộ cho phép → mở hộp "Chuyển tiền thật qua Ngân hàng / MoMo". */
+  onOpenRealHandoff?: () => void;
 }
 
 type FaceState =
@@ -95,6 +97,7 @@ export default function CoolingOffModal({
   onUseWebcam,
   onCancelTransaction,
   onDownloadReport,
+  onOpenRealHandoff,
 }: CoolingOffModalProps) {
   const { t, lang, money, data } = useI18n();
   const [now, setNow] = useState<number>(openedAt);
@@ -230,13 +233,24 @@ export default function CoolingOffModal({
                 </div>
                 <h3 className="text-lg font-extrabold text-sky-900">{t.cooling.approvedTitle}</h3>
                 <p className="mt-1.5 text-sm text-sky-800">{t.cooling.approvedDesc(amountLabel)}</p>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="mt-5 inline-flex cursor-pointer items-center gap-1.5 rounded-2xl bg-sky-700 px-5 py-3 text-sm font-bold text-white hover:bg-sky-800"
-                >
-                  {t.common.close}
-                </button>
+                <div className="mt-5 flex flex-wrap justify-center gap-2.5">
+                  {onOpenRealHandoff && (
+                    <button
+                      type="button"
+                      onClick={onOpenRealHandoff}
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-5 py-3 text-sm font-bold text-white shadow-md shadow-emerald-600/25 hover:brightness-110"
+                    >
+                      {t.handoff.openFromCooling}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-2xl bg-sky-700 px-5 py-3 text-sm font-bold text-white hover:bg-sky-800"
+                  >
+                    {t.common.close}
+                  </button>
+                </div>
               </div>
             ) : outcome === "ops_blocked" ? (
               <div className="rounded-3xl border border-rose-200 bg-rose-50 p-6 text-center">

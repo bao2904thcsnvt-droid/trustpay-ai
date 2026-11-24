@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Host App mẫu · TrustPay AI SDK (MoMo Embedded)</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --pink: #a50064;
+        --pink2: #d82d8b;
+        --ink: #0f172a;
+        --muted: #64748b;
+        --line: #e2e8f0;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: #f8fafc;
+        color: var(--ink);
+      }
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 20px;
+        color: #fff;
+        background: linear-gradient(90deg, var(--pink), var(--pink2));
+      }
+      header h1 { margin: 0; font-size: 16px; }
+      header p { margin: 2px 0 0; font-size: 12px; opacity: 0.9; }
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+        gap: 16px;
+        padding: 16px;
+      }
+      @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+      .card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 14px;
+      }
+      iframe {
+        width: 100%;
+        height: 1100px;
+        border: 2px dashed #7dd3fc;
+        border-radius: 16px;
+        background: #fff;
+      }
+      label { display: block; font-size: 12px; font-weight: 600; color: #334155; margin-top: 8px; }
+      input, select {
+        width: 100%;
+        min-height: 40px;
+        margin-top: 4px;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        font: inherit;
+      }
+      button {
+        min-height: 44px;
+        border: 0;
+        border-radius: 14px;
+        padding: 10px 14px;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .primary { width: 100%; margin-top: 12px; color: #fff; background: linear-gradient(90deg, var(--pink), var(--pink2)); }
+      .ghost { color: #fff; background: rgba(255, 255, 255, 0.18); }
+      .muted { color: var(--muted); font-size: 12px; }
+      .log { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; max-height: 640px; overflow: auto; }
+      .entry { border: 1px solid var(--line); border-radius: 14px; padding: 8px 10px; background: #0b1220; color: #d1fae5; }
+      .entry .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 11px; color: #cbd5e1; }
+      .badge { border-radius: 999px; padding: 2px 8px; font-weight: 800; font-size: 10px; color: #fff; }
+      .ALLOW { background: #059669; }
+      .HOLD_GUARDIAN { background: #f59e0b; }
+      .BLOCK { background: #e11d48; }
+      pre { margin: 6px 0 0; white-space: pre-wrap; word-break: break-all; font-size: 10px; line-height: 1.5; }
+      .ok { color: #6ee7b7; }
+      .bad { color: #fda4af; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1 data-i18n="title"></h1>
+        <p data-i18n="subtitle"></p>
+      </div>
+      <button type="button" class="ghost" id="lang-toggle">VI | EN</button>
+    </header>
+
+    <main>
+      <section class="card">
+        <p class="muted" data-i18n="frameNote"></p>
+        <iframe id="sdk-frame" title="TrustPay AI SDK"></iframe>
+      </section>
+
+      <section class="card">
+        <h2 style="margin: 0; font-size: 14px" data-i18n="formTitle"></h2>
+        <p class="muted" data-i18n="formNote"></p>
+        <form id="host-form">
+          <label><span data-i18n="amount"></span><input id="f-amount" inputmode="numeric" value="250000" /></label>
+          <label>
+            <span data-i18n="bank"></span>
+            <select id="f-bank">
+              <option value="970436">VCB — Vietcombank (970436)</option>
+              <option value="970422">MB — MBBank (970422)</option>
+              <option value="970407">TCB — Techcombank (970407)</option>
+              <option value="970418">BIDV (970418)</option>
+              <option value="970416">ACB (970416)</option>
+              <option value="970415">ICB — VietinBank (970415)</option>
+              <option value="970423">TPB — TPBank (970423)</option>
+              <option value="970412">PVCB — PVcomBank (970412)</option>
+              <option value="971025">MOMO — Ví MoMo</option>
+            </select>
+          </label>
+          <label><span data-i18n="account"></span><input id="f-account" value="0071001234567" /></label>
+          <label><span data-i18n="name"></span><input id="f-name" value="NGUYEN MINH" /></label>
+          <label><span data-i18n="memo"></span><input id="f-memo" value="tien an trua" maxlength="25" /></label>
+          <button type="submit" class="primary" data-i18n="send"></button>
+        </form>
+        <h2 style="margin: 16px 0 0; font-size: 14px" data-i18n="logTitle"></h2>
+        <p class="muted" id="log-empty" data-i18n="logEmpty"></p>
+        <div class="log" id="log"></div>
+      </section>
+    </main>
+
+    <script>
+      (function () {
+        "use strict";
+        var TEXT = {
+          vi: {
+            title: "Host App mẫu (MoMo / Ngân hàng) — nhúng TrustPay AI SDK",
+            subtitle: "Trang thử tích hợp: Host gửi TRUSTPAY_HOST_TRANSFER_REQUEST, SDK trả TRUSTPAY_SDK_DECISION qua postMessage.",
+            frameNote: "Iframe bên dưới là TrustPay AI SDK (?embed=momo&hostOrigin=…). Chỉ origin này được phép trao đổi gói tin.",
+            formTitle: "onBeforeTransferConfirm — Host yêu cầu kiểm duyệt",
+            formNote: "Host gửi lệnh chuyển; SDK điền sẵn và chờ người dùng bấm “Phân tích giao dịch với Lá chắn AI”.",
+            amount: "Số tiền (VNĐ)",
+            bank: "Ngân hàng / Ví nhận",
+            account: "Số tài khoản / SĐT MoMo",
+            name: "Tên người nhận (không dấu)",
+            memo: "Nội dung",
+            send: "Gửi yêu cầu kiểm duyệt",
+            logTitle: "Decision Token nhận được (SDK → Host)",
+            logEmpty: "Chưa có gói tin. Gửi yêu cầu rồi phân tích trong SDK.",
+            valid: "signatureHash hợp lệ",
+            invalid: "signatureHash KHÔNG hợp lệ",
+            unverifiable: "Không kiểm tra được (cần https hoặc localhost)",
+          },
+          en: {
+            title: "Sample Host App (MoMo / Bank) — embedding the TrustPay AI SDK",
+            subtitle: "Integration test page: the host sends TRUSTPAY_HOST_TRANSFER_REQUEST, the SDK answers TRUSTPAY_SDK_DECISION via postMessage.",
+            frameNote: "The iframe below is the TrustPay AI SDK (?embed=momo&hostOrigin=…). Only this origin may exchange messages.",
+            formTitle: "onBeforeTransferConfirm — host asks for a check",
+            formNote: "The host sends a transfer; the SDK pre-fills it and waits for the user to run the AI Shield analysis.",
+            amount: "Amount (VND)",
+            bank: "Receiving bank / wallet",
+            account: "Account number / MoMo phone",
+            name: "Recipient name (no accents)",
+            memo: "Memo",
+            send: "Send check request",
+            logTitle: "Decision Tokens received (SDK → Host)",
+            logEmpty: "No packets yet. Send a request, then analyze inside the SDK.",
+            valid: "signatureHash valid",
+            invalid: "signatureHash INVALID",
+            unverifiable: "Cannot verify (needs https or localhost)",
+          },
+        };
+        var lang = "vi";
+        var origin = window.location.origin;
+        var frame = document.getElementById("sdk-frame");
+        var log = document.getElementById("log");
+        var empty = document.getElementById("log-empty");
+        frame.src = "/?embed=momo&hostOrigin=" + encodeURIComponent(origin);
+
+        function t(key) { return TEXT[lang][key] || key; }
+        function applyText() {
+          document.documentElement.lang = lang;
+          document.querySelectorAll("[data-i18n]").forEach(function (node) {
+            node.textContent = t(node.getAttribute("data-i18n"));
+          });
+        }
+        document.getElementById("lang-toggle").addEventListener("click", function () {
+          lang = lang === "vi" ? "en" : "vi";
+          applyText();
+        });
+        applyText();
+
+        // JSON chuẩn hóa giống lib/sdk/decision-token.ts (khóa sắp xếp, bỏ undefined).
+        function canonical(value) {
+          if (value === null || typeof value !== "object") return JSON.stringify(value);
+          if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
+          return "{" + Object.keys(value).filter(function (k) { return value[k] !== undefined; }).sort().map(function (k) {
+            return JSON.stringify(k) + ":" + canonical(value[k]);
+          }).join(",") + "}";
+        }
+        function verify(token) {
+          if (!window.crypto || !window.crypto.subtle) return Promise.resolve(null);
+          var payload = {};
+          Object.keys(token).forEach(function (k) {
+            if (k !== "signatureAlg" && k !== "signatureHash") payload[k] = token[k];
+          });
+          return window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical(payload))).then(function (buf) {
+            var hex = Array.from(new Uint8Array(buf)).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+            return hex === token.signatureHash;
+          });
+        }
+
+        window.addEventListener("message", function (event) {
+          if (event.origin !== origin || event.source !== frame.contentWindow) return;
+          var token = event.data;
+          if (!token || token.type !== "TRUSTPAY_SDK_DECISION") return;
+          verify(token).then(function (ok) {
+            empty.style.display = "none";
+            var entry = document.createElement("div");
+            entry.className = "entry";
+            var meta = document.createElement("div");
+            meta.className = "meta";
+            var badge = document.createElement("span");
+            badge.className = "badge " + String(token.decision);
+            badge.textContent = String(token.decision);
+            var eventName = document.createElement("strong");
+            eventName.textContent = String(token.event) + " · risk " + String(token.riskScore);
+            var check = document.createElement("span");
+            check.className = ok === null ? "" : ok ? "ok" : "bad";
+            check.textContent = ok === null ? t("unverifiable") : ok ? t("valid") : t("invalid");
+            meta.appendChild(badge);
+            meta.appendChild(eventName);
+            meta.appendChild(check);
+            var pre = document.createElement("pre");
+            pre.textContent = JSON.stringify(token, null, 2);
+            entry.appendChild(meta);
+            entry.appendChild(pre);
+            log.insertBefore(entry, log.firstChild);
+          });
+        });
+
+        document.getElementById("host-form").addEventListener("submit", function (event) {
+          event.preventDefault();
+          var amount = parseInt(String(document.getElementById("f-amount").value).replace(/\D/g, ""), 10) || 0;
+          var request = {
+            type: "TRUSTPAY_HOST_TRANSFER_REQUEST",
+            requestId: "HOST-" + Date.now().toString(36).toUpperCase(),
+            transfer: {
+              amount: amount,
+              bankBin: document.getElementById("f-bank").value,
+              accountNumber: document.getElementById("f-account").value,
+              accountName: document.getElementById("f-name").value,
+              memo: document.getElementById("f-memo").value,
+            },
+          };
+          frame.contentWindow.postMessage(request, origin);
+        });
+      })();
+    </script>
+  </body>
+</html>

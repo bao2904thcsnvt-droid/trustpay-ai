@@ -38,6 +38,9 @@ export const VIETQR_BANKS: Readonly<Record<string, string>> = {
   "970437": "HDBank",
   "970441": "VIB",
   "970443": "SHB",
+  // Vòng 3 — khớp danh bạ "Real Payment Handoff" (lib/payments/banks.ts)
+  "970412": "PVcomBank",
+  "971025": "Ví MoMo",
 };
 
 /**

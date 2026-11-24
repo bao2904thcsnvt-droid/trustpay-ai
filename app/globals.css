@@ -700,6 +700,32 @@ html.dark {
   }
 }
 
+/* ===================================================================== */
+/* Vòng 4 — Easy Mode: chữ to, ẩn bảng kỹ thuật (telemetry, TLV, SDK…)    */
+/* ===================================================================== */
+.tp-easy [data-tp-tech],
+.tp-easy [data-tp-pro-only] {
+  display: none !important;
+}
+
+.tp-easy .text-\[10px\] {
+  font-size: 13px;
+}
+
+.tp-easy .text-\[11px\] {
+  font-size: 14px;
+}
+
+.tp-easy .text-xs {
+  font-size: 0.9375rem;
+  line-height: 1.4rem;
+}
+
+.tp-easy .text-sm {
+  font-size: 1.0625rem;
+  line-height: 1.6rem;
+}
+
 /* Bottom sheet trượt lên (điện thoại) / thẻ nổi trồi lên (laptop). */
 @keyframes tp-sheet-up {
   from {
@@ -806,6 +832,1630 @@ html.dark {
   }
 
   .tp-marquee-track > span + span {
+    display: none;
+  }
+}
+
+/* ===================================================================== */
+/* Vòng 5 — DARK CINEMATIC GLASSMORPHISM                                  */
+/* Token màu, font Sora biến thiên, nền video sợi quang, Hero 100dvh,      */
+/* công thức kính mờ 3 lớp + viền hairline vàng ấm → xanh băng.            */
+/* ===================================================================== */
+:root {
+  --obsidian: #02060f;
+  --ink: #ffffff;
+  --sub: #a2a9b8;
+  --nav: #fbfdff;
+  --foot: #f4f8fd;
+  --hair: rgba(196, 214, 232, 0.72);
+  --chev: rgba(214, 232, 250, 0.9);
+  --navdim: #e8ecf0;
+  --feat: #e2ebf5;
+  --veil: 6, 10, 18;
+  --glass: rgba(10, 16, 28, 0.72);
+  --glass-hair: rgba(196, 214, 232, 0.22);
+  --glow-gold: rgba(255, 228, 182, 0.95);
+  --glow-ice: rgba(186, 224, 247, 0.95);
+  /* Sora (latin/latin-ext) → chữ có dấu tiếng Việt rơi xuống Be Vietnam Pro, rồi system-ui. */
+  --font-display: var(--font-sora), var(--font-be-vietnam-pro), system-ui, sans-serif;
+}
+
+/* ---------- Kính tối cho toàn Không gian làm việc (ghi đè ánh xạ Dark phía trên) ---------- */
+.dark body,
+.dark .tp-follow-theme {
+  --background: #02060f;
+  --foreground: #e2ebf5;
+  --color-white: rgba(10, 16, 28, 0.72);
+  --color-slate-50: rgba(6, 11, 20, 0.62);
+  --color-slate-100: rgba(196, 214, 232, 0.08);
+  --color-slate-200: rgba(196, 214, 232, 0.22);
+  --color-slate-300: rgba(196, 214, 232, 0.34);
+
+  /* Nền / viền nhạt có sắc → lớp sắc trong suốt phủ trên kính (không còn mảng đặc). */
+  --color-red-50: color-mix(in oklab, #ef4444 12%, transparent);
+  --color-red-100: color-mix(in oklab, #ef4444 18%, transparent);
+  --color-red-200: color-mix(in oklab, #ef4444 30%, transparent);
+  --color-red-300: color-mix(in oklab, #ef4444 44%, transparent);
+  --color-orange-50: color-mix(in oklab, #f97316 12%, transparent);
+  --color-orange-100: color-mix(in oklab, #f97316 18%, transparent);
+  --color-orange-200: color-mix(in oklab, #f97316 30%, transparent);
+  --color-orange-300: color-mix(in oklab, #f97316 44%, transparent);
+  --color-amber-50: color-mix(in oklab, #f59e0b 12%, transparent);
+  --color-amber-100: color-mix(in oklab, #f59e0b 18%, transparent);
+  --color-amber-200: color-mix(in oklab, #f59e0b 30%, transparent);
+  --color-amber-300: color-mix(in oklab, #f59e0b 44%, transparent);
+  --color-yellow-50: color-mix(in oklab, #eab308 12%, transparent);
+  --color-yellow-100: color-mix(in oklab, #eab308 18%, transparent);
+  --color-yellow-200: color-mix(in oklab, #eab308 30%, transparent);
+  --color-yellow-300: color-mix(in oklab, #eab308 44%, transparent);
+  --color-lime-50: color-mix(in oklab, #84cc16 12%, transparent);
+  --color-lime-100: color-mix(in oklab, #84cc16 18%, transparent);
+  --color-lime-200: color-mix(in oklab, #84cc16 30%, transparent);
+  --color-lime-300: color-mix(in oklab, #84cc16 44%, transparent);
+  --color-green-50: color-mix(in oklab, #22c55e 12%, transparent);
+  --color-green-100: color-mix(in oklab, #22c55e 18%, transparent);
+  --color-green-200: color-mix(in oklab, #22c55e 30%, transparent);
+  --color-green-300: color-mix(in oklab, #22c55e 44%, transparent);
+  --color-emerald-50: color-mix(in oklab, #10b981 12%, transparent);
+  --color-emerald-100: color-mix(in oklab, #10b981 18%, transparent);
+  --color-emerald-200: color-mix(in oklab, #10b981 30%, transparent);
+  --color-emerald-300: color-mix(in oklab, #10b981 44%, transparent);
+  --color-teal-50: color-mix(in oklab, #14b8a6 12%, transparent);
+  --color-teal-100: color-mix(in oklab, #14b8a6 18%, transparent);
+  --color-teal-200: color-mix(in oklab, #14b8a6 30%, transparent);
+  --color-teal-300: color-mix(in oklab, #14b8a6 44%, transparent);
+  --color-cyan-50: color-mix(in oklab, #06b6d4 12%, transparent);
+  --color-cyan-100: color-mix(in oklab, #06b6d4 18%, transparent);
+  --color-cyan-200: color-mix(in oklab, #06b6d4 30%, transparent);
+  --color-cyan-300: color-mix(in oklab, #06b6d4 44%, transparent);
+  --color-sky-50: color-mix(in oklab, #0ea5e9 12%, transparent);
+  --color-sky-100: color-mix(in oklab, #0ea5e9 18%, transparent);
+  --color-sky-200: color-mix(in oklab, #0ea5e9 30%, transparent);
+  --color-sky-300: color-mix(in oklab, #0ea5e9 44%, transparent);
+  --color-blue-50: color-mix(in oklab, #3b82f6 12%, transparent);
+  --color-blue-100: color-mix(in oklab, #3b82f6 18%, transparent);
+  --color-blue-200: color-mix(in oklab, #3b82f6 30%, transparent);
+  --color-blue-300: color-mix(in oklab, #3b82f6 44%, transparent);
+  --color-indigo-50: color-mix(in oklab, #6366f1 12%, transparent);
+  --color-indigo-100: color-mix(in oklab, #6366f1 18%, transparent);
+  --color-indigo-200: color-mix(in oklab, #6366f1 30%, transparent);
+  --color-indigo-300: color-mix(in oklab, #6366f1 44%, transparent);
+  --color-violet-50: color-mix(in oklab, #8b5cf6 12%, transparent);
+  --color-violet-100: color-mix(in oklab, #8b5cf6 18%, transparent);
+  --color-violet-200: color-mix(in oklab, #8b5cf6 30%, transparent);
+  --color-violet-300: color-mix(in oklab, #8b5cf6 44%, transparent);
+  --color-purple-50: color-mix(in oklab, #a855f7 12%, transparent);
+  --color-purple-100: color-mix(in oklab, #a855f7 18%, transparent);
+  --color-purple-200: color-mix(in oklab, #a855f7 30%, transparent);
+  --color-purple-300: color-mix(in oklab, #a855f7 44%, transparent);
+  --color-fuchsia-50: color-mix(in oklab, #d946ef 12%, transparent);
+  --color-fuchsia-100: color-mix(in oklab, #d946ef 18%, transparent);
+  --color-fuchsia-200: color-mix(in oklab, #d946ef 30%, transparent);
+  --color-fuchsia-300: color-mix(in oklab, #d946ef 44%, transparent);
+  --color-pink-50: color-mix(in oklab, #ec4899 12%, transparent);
+  --color-pink-100: color-mix(in oklab, #ec4899 18%, transparent);
+  --color-pink-200: color-mix(in oklab, #ec4899 30%, transparent);
+  --color-pink-300: color-mix(in oklab, #ec4899 44%, transparent);
+  --color-rose-50: color-mix(in oklab, #f43f5e 12%, transparent);
+  --color-rose-100: color-mix(in oklab, #f43f5e 18%, transparent);
+  --color-rose-200: color-mix(in oklab, #f43f5e 30%, transparent);
+  --color-rose-300: color-mix(in oklab, #f43f5e 44%, transparent);
+}
+
+/* ---------- Khung ứng dụng: nền obsidian + video mờ phía sau ---------- */
+.tp-shell {
+  position: relative;
+}
+
+.dark .tp-shell {
+  background: transparent;
+}
+
+.tp-workspace {
+  position: relative;
+  z-index: 1;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 0.6s ease,
+    visibility 0s linear 0s;
+}
+
+.tp-workspace[data-hidden="true"] {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.35s ease,
+    visibility 0s linear 0.35s;
+}
+
+html.tp-hero-open,
+html.tp-hero-open body {
+  overflow: hidden;
+}
+
+.tp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background-color: var(--obsidian);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  transition: opacity 0.8s ease;
+}
+
+.tp-backdrop .art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity 0.8s ease;
+}
+
+.tp-backdrop .veil,
+.tp-backdrop .veil-work {
+  position: absolute;
+  inset: 0;
+  transition: opacity 0.8s ease;
+}
+
+/* Lớp phủ điện ảnh: tối mép, giữ luồng sáng trung tâm nhưng đủ tương phản cho chữ trắng. */
+.tp-backdrop .veil {
+  background:
+    radial-gradient(
+      ellipse 62% 46% at 50% 47%,
+      rgba(var(--veil), 0.34) 0%,
+      rgba(var(--veil), 0.42) 52%,
+      rgba(var(--veil), 0.78) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(var(--veil), 0.62) 0%,
+      rgba(var(--veil), 0.12) 20%,
+      rgba(var(--veil), 0.14) 72%,
+      rgba(var(--veil), 0.86) 100%
+    );
+}
+
+/* Điện thoại: tăng độ tương phản vùng tâm (chữ nằm đúng trên luồng sáng hội tụ). */
+@media (max-width: 599.98px) {
+  .tp-backdrop .veil {
+    background:
+      radial-gradient(
+        ellipse 92% 50% at 50% 48%,
+        rgba(var(--veil), 0.68) 0%,
+        rgba(var(--veil), 0.56) 55%,
+        rgba(var(--veil), 0.82) 100%
+      ),
+      linear-gradient(
+        180deg,
+        rgba(var(--veil), 0.7) 0%,
+        rgba(var(--veil), 0.3) 24%,
+        rgba(var(--veil), 0.34) 72%,
+        rgba(var(--veil), 0.9) 100%
+      );
+  }
+}
+
+/* Không gian làm việc: chỉ còn "ánh video" mờ phía sau các thẻ kính. */
+.tp-backdrop .veil-work {
+  opacity: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(2, 6, 15, 0.55) 0%, rgba(2, 6, 15, 0.88) 70%),
+    rgba(2, 6, 15, 0.42);
+}
+
+.tp-backdrop[data-mode="workspace"] .veil {
+  opacity: 0;
+}
+
+.tp-backdrop[data-mode="workspace"] .veil-work {
+  opacity: 1;
+}
+
+.tp-backdrop[data-mode="workspace"] .art {
+  opacity: 0.62;
+}
+
+/* Light mode (dùng ngoài trời nắng): Không gian làm việc nền sáng, video chỉ còn ở Hero. */
+html:not(.dark) .tp-backdrop[data-mode="workspace"] {
+  opacity: 0;
+}
+
+/* ---------- Thẻ kính tối: rgba(10,16,28,.72) + blur(24px) + viền hairline ---------- */
+.dark body :is(.rounded-3xl.bg-white, .rounded-3xl[class*="bg-white/"]):not(:has(.fixed)) {
+  -webkit-backdrop-filter: blur(24px) saturate(1.15);
+  backdrop-filter: blur(24px) saturate(1.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 30px 80px -42px rgba(0, 0, 0, 0.9);
+}
+
+@media (max-width: 599.98px) {
+  .dark body :is(.rounded-3xl.bg-white, .rounded-3xl[class*="bg-white/"]):not(:has(.fixed)) {
+    -webkit-backdrop-filter: blur(16px) saturate(1.1);
+    backdrop-filter: blur(16px) saturate(1.1);
+  }
+}
+
+/* Thanh ứng dụng kính + đường hairline vàng ấm → xanh băng ở mép dưới. */
+.dark .tp-appbar {
+  background: rgba(3, 7, 15, 0.62);
+  border-bottom-color: rgba(196, 214, 232, 0.14);
+  box-shadow: none;
+}
+
+.tp-appbar::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 228, 182, 0.5) 30%, rgba(186, 224, 247, 0.5) 70%, transparent);
+  opacity: 0;
+}
+
+.dark .tp-appbar::after {
+  opacity: 1;
+}
+
+/* Menu thả xuống nằm trong thanh kính → backdrop không lấy được nội dung phía dưới, nên đặc hơn. */
+.dark .tp-menu {
+  background: rgba(7, 12, 23, 0.95);
+  border-color: rgba(196, 214, 232, 0.22);
+}
+
+.tp-brand-word {
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-variation-settings: "wght" 531;
+  letter-spacing: 0.28em;
+  color: var(--color-slate-900);
+}
+
+.dark .tp-brand-word {
+  color: var(--ink);
+}
+
+/* Thẻ nổi bật: viền hairline chuyển sắc vàng kim → xanh băng (mask-composite: exclude). */
+.dark :is(#tp-linked-accounts, #tp-real-handoff, #tp-trusted-payees, #tp-split-bill, #tp-ai-check, #tp-qr-inspector) {
+  position: relative;
+}
+
+/* Thẻ nổi bật (nền kính trắng) dùng CÙNG công thức với CTA: sáng khuếch tán trắng .24 → .04,
+   vàng ấm .17 → xanh lạnh .09, blur(26px) saturate(.45), bóng tỏa hai cực vàng/xanh.
+   Khác biệt duy nhất: lớp đáy là kính tối .72 (đặc tả Tầng 2) thay vì .28 để chữ trong biểu mẫu
+   luôn đủ tương phản, và lớp sáng gói trong 140px đầu thẻ (thẻ cao, không bị "đục sữa").
+   Trạng thái mang màu ý nghĩa (khóa, cảnh báo…) giữ nguyên nền riêng. */
+.dark :is(#tp-linked-accounts, #tp-real-handoff, #tp-trusted-payees, #tp-split-bill, #tp-ai-check, #tp-qr-inspector).bg-white {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.04) 140px, rgba(255, 255, 255, 0.04)),
+    linear-gradient(90deg, rgba(255, 226, 178, 0.17), rgba(150, 196, 244, 0.09)),
+    var(--glass);
+  -webkit-backdrop-filter: blur(26px) saturate(0.45);
+  backdrop-filter: blur(26px) saturate(0.45);
+  box-shadow:
+    -22px 0 56px -34px rgba(255, 214, 160, 0.42),
+    22px 0 56px -34px rgba(140, 190, 240, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 30px 80px -42px rgba(0, 0, 0, 0.9);
+}
+
+.dark :is(#tp-linked-accounts, #tp-real-handoff, #tp-trusted-payees, #tp-split-bill, #tp-ai-check, #tp-qr-inspector)::before {
+  content: "";
+  position: absolute;
+  /* -1px: phủ đúng lên viền 1px sẵn có của thẻ (không tạo đường viền đôi). */
+  inset: -1px;
+  z-index: 0;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  /* Viền hairline vàng kim (trái) → xanh băng (phải), cùng 2 đầu .95 với CTA. */
+  background: linear-gradient(90deg, var(--glow-gold), rgba(232, 226, 214, 0.4) 50%, var(--glow-ice));
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* ---------- Kiểu chữ Sora biến thiên (font-weight = bậc gần nhất của Be Vietnam Pro dự phòng) ---------- */
+.tp-brand {
+  font-family: var(--font-display);
+  font-size: 0.86rem;
+  font-weight: 500;
+  font-variation-settings: "wght" 531;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.tp-hero-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 1.15rem + 3.4vw, 4.4rem);
+  font-weight: 400;
+  font-variation-settings: "wght" 424;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  text-wrap: balance;
+  text-shadow: 0 2px 32px rgba(2, 6, 15, 0.45);
+}
+
+.tp-hero-title > span {
+  display: block;
+  padding-block: 0.06em;
+}
+
+.tp-hero-sub {
+  margin: 0;
+  max-width: 42rem;
+  font-family: var(--font-display);
+  font-size: clamp(0.98rem, 0.88rem + 0.42vw, 1.22rem);
+  font-weight: 400;
+  font-variation-settings: "wght" 446;
+  line-height: 1.55;
+  color: var(--sub);
+  text-wrap: balance;
+}
+
+.tp-hero-sub > span {
+  display: block;
+}
+
+.tp-nav-link {
+  position: relative;
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.5rem;
+  border: 0;
+  padding: 0 0.3rem;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 500;
+  font-variation-settings: "wght" 506;
+  letter-spacing: 0.01em;
+  color: var(--nav);
+  opacity: 0.86;
+  transition: opacity 0.2s ease;
+}
+
+.tp-nav-link:hover,
+.tp-nav-link:focus-visible {
+  opacity: 1;
+}
+
+.bar-nav .tp-nav-link::after {
+  content: "";
+  position: absolute;
+  right: 0.3rem;
+  bottom: 9px;
+  left: 0.3rem;
+  height: 1px;
+  background: linear-gradient(90deg, var(--glow-gold), var(--glow-ice));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s ease;
+}
+
+.bar-nav .tp-nav-link:hover::after,
+.bar-nav .tp-nav-link:focus-visible::after {
+  transform: scaleX(1);
+}
+
+/* Nút pill viền mảnh. */
+.tp-pill {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  padding: 0 1.15rem;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-variation-settings: "wght" 581;
+  letter-spacing: 0.02em;
+  color: var(--navdim);
+  white-space: nowrap;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.tp-pill:hover,
+.tp-pill:focus-visible {
+  border-color: rgba(255, 228, 182, 0.85);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.tp-pill-block {
+  width: 100%;
+  min-height: 48px;
+}
+
+/* Nút chọn nhanh (Easy Mode, Hướng dẫn) trên thanh Hero. */
+.tp-chip {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid rgba(196, 214, 232, 0.28);
+  border-radius: 999px;
+  padding: 0 0.85rem;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-variation-settings: "wght" 506;
+  color: var(--navdim);
+  white-space: nowrap;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.tp-chip:hover,
+.tp-chip:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.tp-chip[aria-pressed="true"] {
+  border-color: rgba(255, 228, 182, 0.72);
+  background: linear-gradient(90deg, rgba(255, 226, 178, 0.22), rgba(150, 196, 244, 0.14));
+  color: var(--ink);
+}
+
+/* ---------- CTA kính mờ 3 lớp + viền hairline chuyển sắc (::before + mask-composite) ---------- */
+.tp-cta {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 1.55rem 0 1.85rem;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: clamp(0.98rem, 0.92rem + 0.25vw, 1.08rem);
+  font-weight: 500;
+  font-variation-settings: "wght" 497;
+  letter-spacing: 0.01em;
+  color: #ffffff;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.04)),
+    linear-gradient(90deg, rgba(255, 226, 178, 0.17), rgba(150, 196, 244, 0.09)),
+    rgba(6, 12, 22, 0.28);
+  -webkit-backdrop-filter: blur(26px) saturate(0.45);
+  backdrop-filter: blur(26px) saturate(0.45);
+  box-shadow:
+    -22px 0 48px -20px rgba(255, 214, 160, 0.42),
+    22px 0 48px -20px rgba(140, 190, 240, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 18px 40px -24px rgba(0, 0, 0, 0.8);
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.tp-cta::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(90deg, var(--glow-gold), rgba(232, 226, 214, 0.55) 50%, var(--glow-ice));
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+.tp-cta:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    -26px 0 56px -18px rgba(255, 214, 160, 0.55),
+    26px 0 56px -18px rgba(140, 190, 240, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    0 22px 44px -24px rgba(0, 0, 0, 0.85);
+}
+
+.tp-cta:focus-visible {
+  outline: 2px solid rgba(186, 224, 247, 0.95);
+  outline-offset: 4px;
+}
+
+.tp-cta-arrow {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  transition: transform 0.25s ease;
+}
+
+.tp-cta:hover .tp-cta-arrow {
+  transform: translateX(4px);
+}
+
+/* ---------- Tầng 1 — Cinematic Hero toàn khung nhìn ---------- */
+.tp-cine {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--ink);
+  font-family: var(--font-display);
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.6s ease,
+    transform 0.64s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.tp-cine[data-leaving="true"] {
+  opacity: 0;
+  transform: translateY(-4vh) scale(1.012);
+  pointer-events: none;
+}
+
+/* Hero luôn là sân khấu tối: các tiện ích Tailwind màu trắng (vd nút VI | EN) giữ đúng màu gốc. */
+.dark .tp-cine {
+  --color-white: #ffffff;
+}
+
+.tp-skip-hero .tp-cine {
+  display: none;
+}
+
+.tp-cine .bar {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: max(14px, env(safe-area-inset-top)) clamp(14px, 3.4vw, 44px) 12px;
+}
+
+.tp-brand-lockup {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.bar-nav {
+  display: none;
+  margin-inline: auto;
+  align-items: center;
+  gap: clamp(0.8rem, 1.8vw, 1.9rem);
+}
+
+.bar-quick {
+  display: none;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.bar-burger {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  margin-left: auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(196, 214, 232, 0.3);
+  border-radius: 14px;
+  background: rgba(10, 16, 28, 0.42);
+  color: var(--nav);
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+
+.bar-sheet {
+  position: absolute;
+  top: calc(100% - 2px);
+  right: 12px;
+  left: 12px;
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(196, 214, 232, 0.24);
+  border-radius: 22px;
+  padding: 10px;
+  background: rgba(8, 13, 24, 0.82);
+  box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.9);
+  -webkit-backdrop-filter: blur(26px) saturate(1.2);
+  backdrop-filter: blur(26px) saturate(1.2);
+  animation: tp-sheet-up 0.24s ease-out;
+}
+
+.bar-sheet .tp-nav-link {
+  width: 100%;
+  min-height: 48px;
+  justify-content: space-between;
+  border-radius: 14px;
+  padding: 0 14px;
+  opacity: 1;
+}
+
+.bar-sheet .tp-nav-link svg {
+  color: var(--chev);
+}
+
+.bar-sheet .tp-nav-link:hover,
+.bar-sheet .tp-nav-link:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.bar-sheet-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid rgba(196, 214, 232, 0.14);
+  padding: 10px 6px 4px;
+}
+
+.bar-sheet-row .tp-chip {
+  min-height: 44px;
+}
+
+@media (min-width: 1100px) {
+  .bar-nav,
+  .bar-quick {
+    display: flex;
+  }
+
+  .bar-burger,
+  .bar-sheet {
+    display: none;
+  }
+}
+
+.tp-cine .hero {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(14px, 2.6vh, 28px);
+  padding: clamp(10px, 3vh, 40px) clamp(18px, 5vw, 48px);
+  text-align: center;
+}
+
+.feats {
+  display: grid;
+  width: min(100%, 1000px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+  margin: clamp(2px, 1.2vh, 14px) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 900px) {
+  .feats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.tp-feat {
+  display: inline-flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 0;
+  padding: 0 0.4rem;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: clamp(0.78rem, 0.73rem + 0.22vw, 0.94rem);
+  font-weight: 500;
+  font-variation-settings: "wght" 534;
+  letter-spacing: 0.01em;
+  color: var(--feat);
+}
+
+.tp-feat svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--chev);
+  transition: transform 0.2s ease;
+}
+
+.tp-feat:hover svg,
+.tp-feat:focus-visible svg {
+  transform: translateX(3px);
+}
+
+.tp-cine .foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 0 18px max(18px, env(safe-area-inset-bottom));
+}
+
+/* Đường kẻ dọc chuyển sắc mảnh dẫn xuống chân trang. */
+.tp-cine .rule {
+  display: block;
+  width: 1px;
+  height: clamp(24px, 6vh, 64px);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 228, 182, 0),
+    rgba(255, 228, 182, 0.75) 35%,
+    rgba(186, 224, 247, 0.75) 70%,
+    rgba(186, 224, 247, 0)
+  );
+}
+
+.tp-foot {
+  margin: 0;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 0.74rem;
+  font-weight: 500;
+  font-variation-settings: "wght" 521;
+  letter-spacing: 0.08em;
+  color: var(--foot);
+  opacity: 0.84;
+}
+
+/* Màn hình thấp (điện thoại xoay ngang / 360×640): gọn khoảng cách để Hero không phải cuộn. */
+@media (max-height: 680px) {
+  .tp-hero-title {
+    font-size: clamp(1.7rem, 1rem + 2.6vw, 3.2rem);
+  }
+
+  .tp-cine .rule {
+    height: 20px;
+  }
+}
+
+/* Hiệu ứng mở chữ `en-wipe` (clip-path) + nổi lên lần lượt. Sau khi chạy xong không còn
+   clip-path → dấu tiếng Việt chồng tầng (Ấ, Ổ…) không bị cắt. */
+@keyframes en-wipe {
+  from {
+    clip-path: inset(-30% 100% -30% 0);
+    opacity: 0.001;
+  }
+  to {
+    clip-path: inset(-30% -4% -30% 0);
+    opacity: 1;
+  }
+}
+
+.en-wipe {
+  animation: en-wipe 1.15s cubic-bezier(0.2, 0.75, 0.15, 1) backwards;
+  animation-delay: var(--d, 0ms);
+}
+
+@keyframes tp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.tp-rise {
+  animation: tp-rise 0.9s cubic-bezier(0.2, 0.75, 0.15, 1) backwards;
+  animation-delay: var(--d, 0ms);
+}
+
+/* Giảm chuyển động: tắt mọi hiệu ứng (video đã dừng ở khung hình đầu trong CinematicBackdrop). */
+@media (prefers-reduced-motion: reduce) {
+  .en-wipe,
+  .tp-rise,
+  .bar-sheet {
+    animation: none;
+  }
+
+  .tp-cine,
+  .tp-workspace,
+  .tp-workspace[data-hidden="true"],
+  .tp-backdrop,
+  .tp-backdrop .art,
+  .tp-backdrop .veil,
+  .tp-backdrop .veil-work,
+  .tp-cta,
+  .tp-cta-arrow,
+  .tp-feat svg,
+  .bar-nav .tp-nav-link::after {
+    transition: none;
+  }
+
+  .tp-cine[data-leaving="true"] {
+    transform: none;
+  }
+}
+
+/* ===================================================================== */
+/* Vòng 6 — SINGLE-VIEWPORT FULL-BLEED VIDEO & DOT-MATRIX                 */
+/* Token Inter + BubbledotICG-FinePos, Hero 100dvh, nền video #000,       */
+/* Không gian Ứng dụng Di động (thẻ kính tối #111113, Tab Bar đáy).       */
+/* Khối này nằm CUỐI tệp nên thắng các khai báo cùng độ ưu tiên của vòng 5 */
+/* ===================================================================== */
+:root {
+  --bg: #000000;
+  --text: #ffffff;
+  --muted: #8e8e8e;
+  --nav-text: #2e2e2e;
+  --pill-dark: #28282a;
+  --sign-in-text: #c8c8c8;
+  --nav-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  --trust-bg: #28282a;
+  --trust-border: rgba(255, 255, 255, 0.4);
+  --trust-text: #c4c2c3;
+  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  /* BubbledotICG-FinePos không có dấu tiếng Việt → glyph thiếu rơi xuống Be Vietnam Pro rồi monospace. */
+  --font-display: "BubbledotICG-FinePos", var(--font-be-vietnam-pro), monospace;
+  --glass: rgba(17, 17, 19, 0.9);
+}
+
+/* ---------- Nền video toàn màn hình ---------- */
+.bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: #000000;
+  pointer-events: none;
+}
+
+.bg-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.bg-shade {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0);
+  transition: background 0.6s ease;
+}
+
+/* Không gian làm việc: video chỉ còn là ánh sáng mờ phía sau các thẻ kính. */
+.bg[data-mode="workspace"] .bg-shade {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+html:not(.dark) .bg[data-mode="workspace"] {
+  opacity: 0;
+}
+
+/* ---------- Kính tối #111113, viền rgba(255,255,255,.14), nền #000 ---------- */
+.dark body,
+.dark .tp-follow-theme {
+  --background: #000000;
+  --color-white: rgba(17, 17, 19, 0.9);
+  --color-slate-50: rgba(0, 0, 0, 0.5);
+  --color-slate-100: rgba(255, 255, 255, 0.07);
+  --color-slate-200: rgba(255, 255, 255, 0.14);
+  --color-slate-300: rgba(255, 255, 255, 0.22);
+}
+
+/* Bỏ ánh vàng/xanh của vòng 5: thẻ nổi bật chỉ còn kính tối + viền trắng mảnh. */
+.dark :is(#tp-linked-accounts, #tp-real-handoff, #tp-trusted-payees, #tp-split-bill, #tp-ai-check, #tp-qr-inspector).bg-white {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 24px 60px -36px rgba(0, 0, 0, 0.9);
+}
+
+.dark :is(#tp-linked-accounts, #tp-real-handoff, #tp-trusted-payees, #tp-split-bill, #tp-ai-check, #tp-qr-inspector)::before {
+  display: none;
+}
+
+.dark .tp-appbar {
+  background: rgba(0, 0, 0, 0.72);
+  border-bottom-color: rgba(255, 255, 255, 0.14);
+}
+
+.dark .tp-appbar::after {
+  opacity: 0;
+}
+
+/* ---------- Hero 1-viewport (100dvh) ---------- */
+.hv {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--text);
+  font-family: var(--font-sans);
+  opacity: 1;
+  transition: opacity 0.6s ease;
+}
+
+.hv[data-leaving="true"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tp-skip-hero .hv {
+  display: none;
+}
+
+.hv-header {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  width: 100%;
+  max-width: 720px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(18px, 2.8vw, 28px);
+  padding: max(18px, env(safe-area-inset-top)) 16px 0;
+  animation: slideDown 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.hv-logo {
+  display: grid;
+  width: clamp(40px, 4.4vw, 46px);
+  height: clamp(40px, 4.4vw, 46px);
+  flex-shrink: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: var(--nav-shadow);
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.hv-logo:hover,
+.hv-logo:focus-visible {
+  transform: scale(1.04);
+}
+
+.hv-nav {
+  display: flex;
+  height: clamp(44px, 5.2vw, 48px);
+  min-width: 0;
+  max-width: 430px;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: space-around;
+  border-radius: 999px;
+  padding: 0 10px;
+  background: #ffffff;
+  box-shadow: var(--nav-shadow);
+}
+
+.hv-nav-item {
+  position: relative;
+  height: 100%;
+  min-width: 44px;
+  border: 0;
+  padding: 0 8px;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--nav-text);
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+.hv-nav-item:hover,
+.hv-nav-item:focus-visible {
+  opacity: 0.75;
+}
+
+.hv-nav-item[aria-current="page"] {
+  opacity: 1;
+}
+
+/* Mục đang chọn: 3 chấm tròn đen 3×3px nằm dưới nhãn (chấm giữa + bóng lệch -5px / +5px). */
+.hv-nav-item[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #111111;
+  transform: translateX(-50%);
+  box-shadow:
+    -5px 0 0 #111111,
+    5px 0 0 #111111;
+}
+
+.hv-signin {
+  height: clamp(44px, 5.2vw, 48px);
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 1.3rem;
+  background: var(--pill-dark);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--sign-in-text);
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.hv-signin:hover,
+.hv-signin:focus-visible {
+  background: #323234;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.hv-burger {
+  display: none;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--pill-dark);
+  cursor: pointer;
+}
+
+.hv-burger[data-open="true"] {
+  background: #ffffff;
+}
+
+.hv-bars {
+  display: grid;
+  gap: 4px;
+}
+
+.hv-bars i {
+  display: block;
+  width: 18px;
+  height: 1.5px;
+  border-radius: 1px;
+  background: #ffffff;
+}
+
+.hv-x {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.hv-x::before,
+.hv-x::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 1.5px;
+  background: #000000;
+}
+
+.hv-x::before {
+  transform: rotate(45deg);
+}
+
+.hv-x::after {
+  transform: rotate(-45deg);
+}
+
+.hv-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  border: 0;
+  background: rgba(0, 0, 0, 0.62);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.hv-sheet {
+  position: fixed;
+  z-index: 3;
+  top: calc(max(18px, env(safe-area-inset-top)) + 48px + 12px);
+  right: 16px;
+  left: 16px;
+  display: grid;
+  gap: 6px;
+  border-radius: 28px;
+  padding: 14px;
+  background: #ffffff;
+  color: #111111;
+  box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.9);
+  animation: tp-sheet-up 0.24s ease-out;
+}
+
+.hv-sheet-item {
+  min-height: 48px;
+  border: 0;
+  border-radius: 16px;
+  padding: 0 14px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 500;
+  color: #111111;
+}
+
+.hv-sheet-item:hover,
+.hv-sheet-item:focus-visible {
+  background: #f2f2f3;
+}
+
+.hv-sheet-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid #e5e5e7;
+  padding: 10px 4px 4px;
+}
+
+.hv-sheet-chip {
+  min-height: 44px;
+  border: 1px solid #d4d4d8;
+  border-radius: 999px;
+  padding: 0 14px;
+  background: #f4f4f5;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #111111;
+}
+
+.hv-sheet-chip[aria-pressed="true"] {
+  border-color: #111111;
+  background: #111111;
+  color: #ffffff;
+}
+
+.hv-sheet-open {
+  min-height: 48px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--pill-dark);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.hv-hero {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  max-width: 900px;
+  flex: 1 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(14px, 2.6vh, 26px);
+  padding: clamp(10px, 3vh, 36px) 18px;
+  text-align: center;
+}
+
+.hv-trust {
+  --trust-size: clamp(36px, 4.5vw, 42px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.hv-avatars {
+  display: inline-flex;
+  align-items: center;
+}
+
+.hv-avatar {
+  display: grid;
+  width: var(--trust-size);
+  height: var(--trust-size);
+  box-sizing: border-box;
+  place-items: center;
+  border: 1px solid var(--trust-border);
+  border-radius: 50%;
+  padding: 5px;
+  background: var(--trust-bg);
+}
+
+.hv-avatar + .hv-avatar {
+  margin-left: calc(var(--trust-size) * -0.42);
+}
+
+.hv-avatar > span {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #111111;
+  font-size: calc(var(--trust-size) * 0.32);
+}
+
+.hv-trust-pill {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 9px 16px;
+  background: var(--trust-bg);
+  font-size: clamp(0.74rem, 0.7rem + 0.2vw, 0.85rem);
+  font-weight: 500;
+  color: var(--trust-text);
+}
+
+/* Tiêu đề: chấm ma trận, trắng tinh #ffffff — KHÔNG gradient, KHÔNG shimmer. */
+.hv-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(28px, 6.2vw, 80px);
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  color: #ffffff;
+}
+
+.hv-line {
+  display: block;
+  animation: headlineFade 0.85s ease both;
+  animation-delay: var(--d, 0ms);
+}
+
+.hv-desc {
+  max-width: min(500px, 92%);
+  margin: 0;
+  font-size: clamp(0.88rem, 0.84rem + 0.25vw, 1rem);
+  line-height: 1.6;
+  color: #d0d0d0;
+  opacity: 0.8;
+}
+
+.hv-cta {
+  min-height: 48px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 1.7rem;
+  background: #ffffff;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #000000;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.15),
+    0 0 22px rgba(255, 255, 255, 0.32),
+    0 0 44px rgba(255, 255, 255, 0.12);
+  animation: revealPulse 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--d, 0ms);
+  transition: transform 0.2s ease;
+}
+
+.hv-cta:hover,
+.hv-cta:focus-visible {
+  transform: translateY(-1px);
+}
+
+.hv-cta:focus-visible,
+.hv-signin:focus-visible,
+.hv-nav-item:focus-visible,
+.hv-logo:focus-visible,
+.hv-burger:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 3px;
+}
+
+.hv-stats {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 100%;
+  max-width: 920px;
+  flex-shrink: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0 18px max(22px, env(safe-area-inset-bottom));
+  list-style: none;
+}
+
+.hv-stat {
+  display: grid;
+  grid-template-areas:
+    "s v"
+    "s l";
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  text-align: left;
+}
+
+.hv-stat-symbol {
+  grid-area: s;
+  font-family: var(--font-display);
+  font-size: clamp(30px, 4vw, 44px);
+  line-height: 1;
+  color: #ffffff;
+}
+
+.hv-stat-value {
+  grid-area: v;
+  font-family: var(--font-display);
+  font-size: clamp(20px, 2.6vw, 28px);
+  line-height: 1.1;
+  color: #ffffff;
+}
+
+.hv-stat-value small {
+  margin-left: 2px;
+  font-size: 0.55em;
+  color: #ffffff;
+}
+
+.hv-stat-label {
+  grid-area: l;
+  font-size: 0.74rem;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .hv-header {
+    justify-content: space-between;
+  }
+
+  .hv-nav,
+  .hv-signin {
+    display: none;
+  }
+
+  .hv-burger {
+    display: grid;
+  }
+
+  .hv-logo {
+    width: 48px;
+    height: 48px;
+  }
+
+  .hv-title {
+    letter-spacing: -0.08em;
+  }
+
+  .hv-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 14px;
+  }
+}
+
+@media (max-width: 420px) {
+  .hv-title {
+    letter-spacing: -0.09em;
+  }
+}
+
+@media (max-height: 640px) {
+  .hv-hero {
+    gap: 10px;
+  }
+
+  .hv-stats {
+    row-gap: 8px;
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes headlineFade {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes revealPulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0),
+      0 0 0 rgba(255, 255, 255, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.hv-rise {
+  animation: headlineFade 0.8s ease both;
+  animation-delay: var(--d, 0ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hv-header,
+  .hv-line,
+  .hv-cta,
+  .hv-rise,
+  .hv-sheet {
+    animation: none;
+  }
+
+  .hv,
+  .bg-shade,
+  .hv-logo,
+  .hv-signin,
+  .hv-cta {
+    transition: none;
+  }
+}
+
+/* ===================================================================== */
+/* Không gian Ứng dụng Di động: Tab Bar đáy kiểu app ngân hàng            */
+/* ===================================================================== */
+.mb-tabbar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 45;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: end;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  background: rgba(8, 8, 10, 0.94);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+
+.mb-tab {
+  display: flex;
+  min-height: 52px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.mb-tab[aria-current="page"] {
+  color: #ffffff;
+}
+
+.mb-tab-scan {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  margin-top: -24px;
+  place-items: center;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #000000;
+  box-shadow:
+    0 0 0 4px #000000,
+    0 0 22px rgba(255, 255, 255, 0.32);
+}
+
+.mb-tab-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+/* Màn hình ngắm quét QR phong cách chấm ma trận. */
+.mb-reticle {
+  position: absolute;
+  inset: 14%;
+  pointer-events: none;
+  border-radius: 20px;
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.95) 1.4px, transparent 1.8px),
+    radial-gradient(circle, rgba(255, 255, 255, 0.95) 1.4px, transparent 1.8px),
+    radial-gradient(circle, rgba(255, 255, 255, 0.95) 1.4px, transparent 1.8px),
+    radial-gradient(circle, rgba(255, 255, 255, 0.95) 1.4px, transparent 1.8px);
+  background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+  background-size:
+    10px 4px,
+    10px 4px,
+    4px 10px,
+    4px 10px;
+  background-position:
+    0 0,
+    0 100%,
+    0 0,
+    100% 0;
+}
+
+@media (min-width: 769px) {
+  .mb-tabbar-standalone-only {
     display: none;
   }
 }

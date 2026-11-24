@@ -10,7 +10,7 @@ const OPTIONS: { id: ThemeMode; icon: string }[] = [
   { id: "dark", icon: "🌙" },
 ];
 
-/** Nút `☀️ Light | 🌙 Dark` cạnh `VI | EN` — lựa chọn được lưu bền vững (mặc định theo hệ thống). */
+/** Nút `☀️ Light | 🌙 Dark` trong menu phụ — lựa chọn được lưu bền vững (mặc định Dark Cinematic). */
 export default function ThemeToggle() {
   const { t } = useI18n();
   const mode = useResolvedTheme();

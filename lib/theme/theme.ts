@@ -1,9 +1,9 @@
 /**
  * Theme Light/Dark của TrustPay AI.
  *
- * - `ThemePreference = null` nghĩa là "theo hệ thống" (prefers-color-scheme) —
- *   đây là trạng thái lần đầu mở ứng dụng.
- * - Khi người dùng bấm "☀️ Light | 🌙 Dark", lựa chọn được lưu bền vững trong
+ * - `ThemePreference = null` nghĩa là người dùng chưa chọn → dùng `DEFAULT_THEME`
+ *   (vòng 5: Dark Cinematic Obsidian `#02060f` là giao diện mặc định của thương hiệu).
+ * - Khi người dùng bấm "☀️ Light | 🌙 Dark" (menu phụ), lựa chọn được lưu bền vững trong
  *   `trustpay-ai.preferences.v1` (cùng store với ngôn ngữ).
  * - Script nội tuyến trong <head> đọc cùng nguồn đó để đặt lớp `.dark` trước khi
  *   trình duyệt vẽ khung hình đầu tiên (không nháy sáng, không lỗi hydrate).
@@ -11,6 +11,9 @@
 
 export type ThemeMode = "light" | "dark";
 export type ThemePreference = ThemeMode | null;
+
+/** Theme khi người dùng chưa chọn (Dark Cinematic Glassmorphism). */
+export const DEFAULT_THEME: ThemeMode = "dark";
 
 /** Phải trùng `PREFERENCES_STORAGE_KEY` trong `lib/preferences/preferences-store.ts`. */
 export const THEME_STORAGE_KEY = "trustpay-ai.preferences.v1";
@@ -36,10 +39,10 @@ export function applyThemeToDocument(mode: ThemeMode): void {
 
 /**
  * Mã script chạy đồng bộ trong <head>. Chỉ đọc JSON tùy chọn (dữ liệu không tin
- * cậy) và chấp nhận đúng 2 giá trị "light" | "dark"; mọi lỗi → theo hệ thống.
+ * cậy) và chấp nhận đúng 2 giá trị "light" | "dark"; chưa chọn / mọi lỗi → `DEFAULT_THEME`.
  */
-export const THEME_INIT_SCRIPT = `(function(){try{var d=document.documentElement,t=null,r=localStorage.getItem(${JSON.stringify(
+export const THEME_INIT_SCRIPT = `(function(){var d=document.documentElement,t=null;try{var r=localStorage.getItem(${JSON.stringify(
   THEME_STORAGE_KEY,
-)});if(r){var p=JSON.parse(r);if(p&&(p.theme==="light"||p.theme==="dark"))t=p.theme}if(!t)t=window.matchMedia&&window.matchMedia(${JSON.stringify(
-  DARK_MEDIA_QUERY,
-)}).matches?"dark":"light";if(t==="dark")d.classList.add("dark");else d.classList.remove("dark");d.style.colorScheme=t}catch(e){}})()`;
+)});if(r){var p=JSON.parse(r);if(p&&(p.theme==="light"||p.theme==="dark"))t=p.theme}}catch(e){}if(!t)t=${JSON.stringify(
+  DEFAULT_THEME,
+)};try{if(t==="dark")d.classList.add("dark");else d.classList.remove("dark");d.style.colorScheme=t}catch(e){}})()`;

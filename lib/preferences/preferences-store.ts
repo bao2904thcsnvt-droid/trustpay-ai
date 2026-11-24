@@ -25,6 +25,8 @@ export interface UiPreferences {
   tipsEnabled: boolean;
   /** Các hộp "Mẹo nhanh" người dùng đã ẩn riêng lẻ. */
   dismissedTips: QuickTipId[];
+  /** Vòng 3: "🔌 Chế độ Nhúng SDK (MoMo Embedded)" — tự bật khi mở với `?embed=momo`. */
+  embedMode: boolean;
 }
 
 export const PREFERENCES_STORAGE_KEY = "trustpay-ai.preferences.v1";
@@ -37,6 +39,7 @@ function createDefaultPreferences(): UiPreferences {
     guideSeen: false,
     tipsEnabled: true,
     dismissedTips: [],
+    embedMode: false,
   };
 }
 
@@ -60,6 +63,7 @@ function sanitizePreferences(raw: unknown): UiPreferences {
     guideSeen: typeof record.guideSeen === "boolean" ? record.guideSeen : defaults.guideSeen,
     tipsEnabled: typeof record.tipsEnabled === "boolean" ? record.tipsEnabled : defaults.tipsEnabled,
     dismissedTips: dismissed,
+    embedMode: record.embedMode === true,
   };
 }
 
@@ -101,6 +105,10 @@ export function setTipsEnabled(tipsEnabled: boolean): void {
     }
     return { ...prev, tipsEnabled, dismissedTips: tipsEnabled ? [] : prev.dismissedTips };
   });
+}
+
+export function setEmbedMode(embedMode: boolean): void {
+  preferencesStore.setState((prev) => (prev.embedMode === embedMode ? prev : { ...prev, embedMode }));
 }
 
 export function dismissQuickTip(id: QuickTipId): void {

@@ -8,6 +8,7 @@ import { maskRecipientForDisplay } from "@/lib/security/pii-display";
 import { formatLatency } from "@/lib/wallet/format";
 import type { PiiKindLabel } from "@/lib/i18n/messages-ext";
 import { useI18n } from "@/components/i18n/I18nProvider";
+import DeploymentModelCard from "@/components/finops/DeploymentModelCard";
 
 export interface SecurityFinOpsPanelProps {
   onClose: () => void;
@@ -377,6 +378,9 @@ export default function SecurityFinOpsPanel({ onClose, lastTrace }: SecurityFinO
               <p className="mt-2 text-[10px] text-slate-400">{t.finops.assumption}</p>
             </section>
           </div>
+
+          {/* 4. Mô hình triển khai thực tế (non-custodial) */}
+          <DeploymentModelCard />
         </div>
       </div>
     </div>

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { setTipsEnabled, usePreferences } from "@/lib/preferences/preferences-store";
 import { useI18n } from "@/components/i18n/I18nProvider";
+import DeploymentModelCard from "@/components/finops/DeploymentModelCard";
 
 export type GuideTopicIndex = 0 | 1 | 2 | 3 | 4;
 
@@ -190,6 +191,10 @@ export default function UserGuideModal({ initialTopic = 0, onClose, onTryNow }: 
               {t.guide.tryNow}
               <ArrowRight className="h-4 w-4" />
             </button>
+          </div>
+          {/* Vòng 3: Mô hình triển khai thực tế (Zero-License SDK & VietQR Handoff) */}
+          <div className="sm:col-span-5">
+            <DeploymentModelCard compact />
           </div>
         </div>
 

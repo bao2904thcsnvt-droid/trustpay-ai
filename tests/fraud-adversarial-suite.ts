@@ -3,6 +3,7 @@
  * tại Việt Nam) + kiểm thử tự phục hồi (Offline Fallback / Circuit Breaker).
  * v1.1 bổ sung F16–F20 cho Ví Fintech: Safe Shopping Agent, Blacklist cụm STK,
  * danh mục Hóa đơn, lũy kế ngày TT 50 và điều chuyển hạn mức / che PII hiển thị.
+ * v1.4 bổ sung F29–F31: Paste-to-Pay, Chia tiền nhóm (Split Bill), Danh bạ Tin cậy & Khóa ứng dụng.
  *
  * Chạy trực tiếp: `npm run test:fraud`  (hoặc `npx --yes tsx tests/fraud-adversarial-suite.ts`)
  * Cổng Production nghiêm ngặt: `npx --yes tsx tests/fraud-adversarial-suite.ts --strict`
@@ -55,6 +56,63 @@ import {
 import { HIGH_RISK_HOLD_SCORE } from "@/lib/guardian/guardian-alert";
 import { redactForPrompt, redactJsonForPrompt } from "@/lib/security/prompt-redaction";
 import { BASELINE_SONNET_ONLY, computeUnitCost, OPTIMIZED_FINOPS } from "@/lib/finops/unit-economics";
+// v1.3 — Real VietQR Handoff (QR thật trên máy), MoMo SDK Decision Token, Host bridge
+import { createHash } from "node:crypto";
+import {
+  encodeQrText,
+  formatBitsFor,
+  getNumDataCodewords,
+  reedSolomonDivisor,
+  reedSolomonRemainder,
+  versionInfoBits,
+} from "@/lib/qr/qr-matrix";
+import {
+  buildAnalysisCommand,
+  buildBankDeeplink,
+  buildVietQrImageUrl,
+  buildVietQrPayload,
+  derivePaymentMemo,
+  validatePayeeAccount,
+} from "@/lib/payments/vietqr-builder";
+import { findInstitution } from "@/lib/payments/banks";
+import { decodeVietQr } from "@/lib/qr/vietqr-inspector";
+import { sha256HexSync } from "@/lib/crypto/sha256";
+import {
+  canonicalJson,
+  createDecisionToken,
+  decisionFromRisk,
+  reasonCodesFrom,
+  verifyDecisionToken,
+} from "@/lib/sdk/decision-token";
+import {
+  buildHostCommandText,
+  HOST_REQUEST_TYPE,
+  isEmbedRequested,
+  normalizeOrigin,
+  parseHostTransferRequest,
+  resolveHostOrigin,
+} from "@/lib/sdk/host-bridge";
+// v1.4 — Trung tâm Thanh toán Hợp nhất: Paste-to-Pay, Chia tiền nhóm, Danh bạ Tin cậy, Khóa ứng dụng
+import {
+  buildPasteCommand,
+  isPasteComplete,
+  looksLikePaymentMessage,
+  parsePastedAmount,
+  parsePaymentMessage,
+} from "@/lib/hub/paste-to-pay";
+import { buildSplitMemo, splitBill } from "@/lib/hub/bill-split";
+import {
+  createDefaultHubState,
+  DEFAULT_APP_PIN,
+  DEFAULT_PIN_SALT,
+  hashPin,
+  isTrustedPayeeSaved,
+  isValidPin,
+  sanitizeHubState,
+  verifyAppPin,
+} from "@/lib/hub/hub-store";
+import { fromBase64Url, isUnlockFresh, QR_UNLOCK_WINDOW_MS, toBase64Url } from "@/lib/security/app-lock";
+import { amountToTrieuPhrase } from "@/lib/wallet/format";
 
 configureOfflineMode();
 
@@ -564,6 +622,429 @@ void (async () => {
     const baseline = computeUnitCost(BASELINE_SONNET_ONLY);
     c.eq(optimized.perTransaction.toFixed(4), "0.0012", "Kịch bản FinOps ≈ $0.0012 / giao dịch");
     c.eq(baseline.perTransaction.toFixed(4), "0.0056", "Baseline Sonnet-only ≈ $0.0056 / giao dịch");
+  });
+
+  // ------------------------------------------------------------------ v1.3
+
+  // F26 — Bộ mã hóa QR trên máy: vector Reed-Solomon chuẩn, bit định dạng/phiên bản, cấu trúc ma trận
+  await suite.run("F26", "QR vẽ trên máy đúng chuẩn ISO 18004 (Reed-Solomon, format, version, finder)", async (c) => {
+    const helloWorld1M = [32, 91, 11, 120, 209, 114, 220, 77, 67, 64, 236, 17, 236, 17, 236, 17];
+    c.eq(
+      reedSolomonRemainder(helloWorld1M, reedSolomonDivisor(10)).join(","),
+      "196,35,39,119,235,215,231,226,93,23",
+      "Reed-Solomon khớp ví dụ chuẩn 'HELLO WORLD' 1-M",
+    );
+    c.eq(formatBitsFor("M", 0), 0x5412, "Bit định dạng M + mask 0 = 101010000010010");
+    c.eq(formatBitsFor("L", 0), 0x77c4, "Bit định dạng L + mask 0 = 111011111000100");
+    c.eq(versionInfoBits(7), 0x07c94, "Thông tin phiên bản 7 = 000111110010010100");
+    c.eq(getNumDataCodewords(1, "M"), 16, "Phiên bản 1-M chứa 16 codeword dữ liệu");
+    c.eq(getNumDataCodewords(10, "M"), 216, "Phiên bản 10-M chứa 216 codeword dữ liệu");
+
+    const payload = buildVietQrPayload({ bankBin: "970436", accountNumber: "0071001234567", amount: 250_000, memo: "tien an trua" });
+    const matrix = encodeQrText(payload, "M");
+    c.eq(matrix.size, matrix.version * 4 + 17, "Kích thước ma trận = phiên bản × 4 + 17");
+    c.ok(matrix.version >= 5 && matrix.version <= 8, `Mã VietQR ${payload.length} ký tự nằm ở phiên bản 5–8`);
+    const m = matrix.modules;
+    const finderRowTop = [0, 1, 2, 3, 4, 5, 6].every((x) => m[0][x]);
+    const finderRing = !m[1][1] && !m[1][5] && m[1][0] && m[1][6] && m[3][3];
+    c.ok(finderRowTop && finderRing, "Mẫu định vị trên-trái đúng 7×7");
+    c.ok(m[matrix.size - 8][8], "Ô tối cố định tại (8, size − 8)");
+    let timingOk = true;
+    for (let x = 8; x < matrix.size - 8; x++) {
+      if (m[6][x] !== (x % 2 === 0)) timingOk = false;
+    }
+    c.ok(timingOk, "Mẫu căn thời gian (timing) xen kẽ sáng/tối");
+    let firstCopy = 0;
+    for (let i = 0; i <= 5; i++) if (m[i][8]) firstCopy |= 1 << i;
+    if (m[7][8]) firstCopy |= 1 << 6;
+    if (m[8][8]) firstCopy |= 1 << 7;
+    if (m[8][7]) firstCopy |= 1 << 8;
+    for (let i = 9; i < 15; i++) if (m[8][14 - i]) firstCopy |= 1 << i;
+    let secondCopy = 0;
+    for (let i = 0; i < 8; i++) if (m[8][matrix.size - 1 - i]) secondCopy |= 1 << i;
+    for (let i = 8; i < 15; i++) if (m[matrix.size - 15 + i][8]) secondCopy |= 1 << i;
+    const expectedFormat = formatBitsFor(matrix.ecc, matrix.mask);
+    c.eq(firstCopy, expectedFormat, "Bản sao 1 của bit định dạng đúng vị trí");
+    c.eq(secondCopy, expectedFormat, "Bản sao 2 của bit định dạng đúng vị trí");
+  });
+
+  // F27 — Real Payment Handoff: VietQR chuẩn EMVCo + CRC, ảnh img.vietqr.io, DeepLink, STK thật được AI đối chiếu
+  await suite.run("F27", "VietQR thật cho STK đã chọn: CRC hợp lệ, DeepLink đúng, STK cụm 1903xxxx bị chặn", async (c) => {
+    const expectedBins: Record<string, string> = {
+      VCB: "970436",
+      MB: "970422",
+      TCB: "970407",
+      BIDV: "970418",
+      ACB: "970416",
+      ICB: "970415",
+      TPB: "970423",
+      PVCB: "970412",
+    };
+    c.ok(
+      Object.entries(expectedBins).every(([code, bin]) => findInstitution(code)?.bin === bin),
+      "Đủ 8 ngân hàng với mã BIN NAPAS chuẩn",
+    );
+    c.truthy(findInstitution("MOMO"), "Có lựa chọn Ví MoMo");
+
+    const payload = buildVietQrPayload({ bankBin: "970436", accountNumber: "0071001234567", amount: 250_000, memo: "tiền ăn trưa" });
+    c.ok(payload.startsWith("000201010212"), "Mã động (Tag 01 = 12) khi có số tiền");
+    const decoded = decodeVietQr(payload).decoded;
+    c.ok(Boolean(decoded?.crc.valid), "CRC-16/CCITT-FALSE hợp lệ");
+    c.eq(decoded?.bankBin, "970436", "Giải mã đúng BIN Vietcombank");
+    c.eq(decoded?.accountNumber, "0071001234567", "Giải mã đúng STK");
+    c.eq(decoded?.amount, 250_000, "Giải mã đúng số tiền");
+    c.eq(decoded?.purpose, "tien an trua", "Nội dung đã bỏ dấu (Tag 62.08)");
+    c.eq(decoded?.serviceCode, "QRIBFTTA", "Dịch vụ chuyển tới tài khoản");
+    c.eq(inspectVietQr(payload, { blacklist: DEFAULT_BLACKLIST }).verdict, "SAFE", "VietQR Inspector xếp AN TOÀN");
+
+    const momo = buildVietQrPayload({ bankBin: "971025", accountNumber: "0909123888", amount: 50_000 });
+    c.eq(inspectVietQr(momo, { blacklist: DEFAULT_BLACKLIST }).verdict, "SAFE", "Mã nhận tiền Ví MoMo hợp lệ");
+    c.eq(validatePayeeAccount("0909123888", findInstitution("MOMO")), "OK", "SĐT MoMo 10 số hợp lệ");
+    c.eq(validatePayeeAccount("12345", findInstitution("VCB")), "INVALID_BANK_ACCOUNT", "STK quá ngắn bị từ chối");
+
+    const vcb = findInstitution("VCB");
+    if (vcb) {
+      c.eq(
+        buildVietQrImageUrl({ institution: vcb, accountNumber: "0071001234567", amount: 250_000, memo: "tien an trua", accountName: "Nguyễn Minh" }),
+        "https://img.vietqr.io/image/VCB-0071001234567-compact2.png?amount=250000&addInfo=tien%20an%20trua&accountName=NGUYEN%20MINH",
+        "Ảnh VietQR đúng định dạng img.vietqr.io compact2",
+      );
+    }
+    c.eq(buildBankDeeplink("vcb"), "https://dl.vietqr.io/pay?app=vcb", "VietQR DeepLink mở app Vietcombank");
+
+    const command = buildAnalysisCommand("Chuyển 250.000đ tiền ăn trưa cho Nguyễn Minh", {
+      institutionCode: "VCB",
+      accountNumber: "0071001234567",
+      accountName: "",
+    });
+    c.eq(command, "Chuyển 250.000đ tiền ăn trưa cho Nguyễn Minh STK 0071001234567 (Vietcombank)", "STK thật được nối vào lệnh phân tích");
+    c.eq(derivePaymentMemo(command), "tien an trua", "Nội dung chuyển khoản mặc định lấy từ lệnh");
+    const safe = await analyze(req(command));
+    c.eq(safe.scamReport.riskLevel, "LOW", "Người nhận sạch → AN TOÀN, mở chuyển tiền thật");
+    c.includes(safe.recipient, "0071001234567", "Bộ luật đọc đúng STK người nhận thật");
+    c.eq(safe.parsedAmount, 250_000, "Số tiền giữ nguyên 250.000đ");
+
+    const muleCommand = buildAnalysisCommand("Chuyển 3.000.000đ cho Trần Văn B", {
+      institutionCode: "TCB",
+      accountNumber: "1903456721",
+      accountName: "",
+    });
+    const mule = await analyze({
+      commandText: muleCommand,
+      currentBudgets: DEFAULT_BUDGETS,
+      blacklist: expandBlacklistForText([...DEFAULT_BLACKLIST, "1903xxxx"], muleCommand),
+    });
+    c.eq(mule.scamReport.riskLevel, "HIGH", "Lệnh 'sạch' nhưng STK thật thuộc cụm 1903xxxx → rủi ro CAO, khóa chuyển tiền thật");
+  });
+
+  // F28 — TrustPay SDK Decision Token (postMessage) & cầu nối Host App
+  await suite.run("F28", "Decision Token ALLOW/HOLD_GUARDIAN/BLOCK có signatureHash kiểm chứng được, không lộ STK thô", async (c) => {
+    c.eq(sha256HexSync("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "SHA-256('abc') chuẩn FIPS");
+    c.eq(sha256HexSync(""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "SHA-256('') chuẩn FIPS");
+    const unicode = "Chuyển 250.000đ tiền ăn trưa cho Nguyễn Minh 🚀";
+    c.eq(sha256HexSync(unicode), createHash("sha256").update(unicode, "utf8").digest("hex"), "Khớp node:crypto với tiếng Việt + emoji");
+    const long = "TrustPay".repeat(200);
+    c.eq(sha256HexSync(long), createHash("sha256").update(long, "utf8").digest("hex"), "Khớp node:crypto với dữ liệu nhiều khối");
+    c.eq(canonicalJson({ b: 1, a: { d: 2, c: [3, { f: 4, e: 5 }] } }), '{"a":{"c":[3,{"e":5,"f":4}],"d":2},"b":1}', "JSON chuẩn hóa sắp xếp khóa");
+
+    c.eq(decisionFromRisk({ riskLevel: "LOW", held: false }), "ALLOW", "AN TOÀN → ALLOW");
+    c.eq(decisionFromRisk({ riskLevel: "HIGH", held: true }), "HOLD_GUARDIAN", "Tạm giữ 15 giây → HOLD_GUARDIAN");
+    c.eq(decisionFromRisk({ riskLevel: "HIGH", held: false }), "BLOCK", "Rủi ro CAO không tạm giữ → BLOCK");
+
+    const token = createDecisionToken({
+      event: "onBeforeTransferConfirm",
+      requestId: "SES-TEST-1",
+      decision: "ALLOW",
+      riskScore: 10,
+      riskLevel: "LOW",
+      biometricRequired: false,
+      reasons: reasonCodesFrom({
+        redFlags: ["Không phát hiện từ khóa lừa đảo hoặc tài khoản Blacklist"],
+        policyReasons: [],
+        riskLevel: "LOW",
+      }),
+      amount: 250_000,
+      payee: { bankBin: "970436", accountNumber: "0071001234567" },
+      engine: "OFFLINE_HEURISTIC",
+      nowMs: Date.UTC(2026, 10, 22, 3, 0, 0),
+      nonce: "0123456789abcdef",
+    });
+    c.eq(token.reasons.join(","), "NO_SCAM_SIGNALS", "Không có dấu hiệu → NO_SCAM_SIGNALS");
+    c.ok(verifyDecisionToken(token), "signatureHash khớp payload");
+    c.ok(!verifyDecisionToken({ ...token, riskScore: 0 }), "Sửa riskScore → chữ ký không còn hợp lệ");
+    c.eq(token.transaction.payeeAccountMasked, "00********567", "STK trong token đã che");
+    c.ok(!JSON.stringify(token).includes("0071001234567"), "Token không chứa STK thô");
+    c.eq(token.biometricOwner, "HOST_APP_C06", "Sinh trắc C06 thuộc trách nhiệm Host App");
+
+    const scam = await analyze(
+      req("Chuyển gấp 12.000.000đ cho Cán bộ điều tra STK 999988887777 để xác minh tài khoản"),
+    );
+    const policy = decideBiometric({ parsedAmount: scam.parsedAmount, riskLevel: scam.scamReport.riskLevel });
+    const codes = reasonCodesFrom({ redFlags: scam.scamReport.redFlags, policyReasons: policy.reasons, riskLevel: scam.scamReport.riskLevel });
+    for (const code of ["BLACKLIST_MATCH", "AUTHORITY_IMPERSONATION", "URGENCY_PRESSURE", "AMOUNT_OVER_10M_TT50", "HIGH_RISK_SCORE"] as const) {
+      c.ok(codes.includes(code), `Mã lý do ${code}`);
+    }
+
+    c.ok(isEmbedRequested("?embed=momo") && isEmbedRequested("?embed=MoMo"), "?embed=momo bật chế độ nhúng");
+    c.ok(!isEmbedRequested("?embed=zalo") && !isEmbedRequested(""), "Tham số khác không bật chế độ nhúng");
+    c.eq(normalizeOrigin("https://momo.vn/app/transfer"), "https://momo.vn", "Origin https hợp lệ");
+    c.eq(normalizeOrigin("http://evil.example"), null, "Từ chối origin http không phải localhost");
+    c.eq(normalizeOrigin("javascript:alert(1)"), null, "Từ chối scheme nguy hiểm");
+    c.eq(resolveHostOrigin("?embed=momo&hostOrigin=https%3A%2F%2Fhost.momo.vn", "", []), "https://host.momo.vn", "Đọc hostOrigin từ URL");
+    c.eq(
+      resolveHostOrigin("?hostOrigin=https%3A%2F%2Fevil.example", "", ["https://momo.vn"]),
+      null,
+      "Origin ngoài allowlist Production bị từ chối",
+    );
+    c.eq(
+      resolveHostOrigin("", "https://momo.vn/transfer", ["https://momo.vn"]),
+      "https://momo.vn",
+      "Referrer thuộc allowlist được chấp nhận",
+    );
+
+    const request = parseHostTransferRequest({
+      type: HOST_REQUEST_TYPE,
+      requestId: "REQ-1",
+      transfer: { amount: 250_000, bankBin: "970436", accountNumber: "0071 0012 34567", accountName: "Nguyễn Minh", memo: "tiền ăn trưa" },
+    });
+    c.ok(
+      request !== null &&
+        request.institutionCode === "VCB" &&
+        request.accountNumber === "0071001234567" &&
+        request.accountName === "NGUYEN MINH" &&
+        request.memo === "tien an trua",
+      "Yêu cầu từ Host được chuẩn hóa",
+    );
+    if (request) {
+      c.eq(buildHostCommandText(request), "Chuyển 250.000đ tien an trua cho NGUYEN MINH", "Lệnh phân tích dựng từ yêu cầu Host");
+    }
+    const bad = [
+      { type: HOST_REQUEST_TYPE, requestId: "REQ-2", transfer: { amount: -1, bankBin: "970436", accountNumber: "0071001234567" } },
+      { type: HOST_REQUEST_TYPE, requestId: "REQ-3", transfer: { amount: 1000, bankBin: "999999", accountNumber: "0071001234567" } },
+      { type: HOST_REQUEST_TYPE, requestId: "<script>", transfer: { amount: 1000, bankBin: "970436", accountNumber: "0071001234567" } },
+      { type: HOST_REQUEST_TYPE, requestId: "REQ-4", transfer: { amount: 600_000_000, bankBin: "970436", accountNumber: "0071001234567" } },
+      { type: "OTHER", requestId: "REQ-5", transfer: { amount: 1000, bankBin: "970436", accountNumber: "0071001234567" } },
+    ];
+    c.ok(bad.every((item) => parseHostTransferRequest(item) === null), "Từ chối yêu cầu Host sai kiểu / vượt hạn mức / BIN lạ");
+  });
+
+  // ------------------------------------------------------------------ v1.4
+
+  // F29 — 📋 Paste-to-Pay: bóc tin nhắn Zalo/Messenger, điền sẵn, Lá chắn AI vẫn thấy dấu hiệu lừa đảo
+  await suite.run("F29", "Paste-to-Pay bóc đúng Ngân hàng/STK/Số tiền/Tên/Nội dung và luôn giữ 'Tin nhắn gốc' cho Lá chắn AI", async (c) => {
+    const raw = "Ck cho anh 450k tiền cafe qua PVcomBank 102000334455 Nguyen Van B";
+    const parsed = parsePaymentMessage(raw);
+    c.eq(parsed.institutionCode, "PVCB", "Nhận diện PVcomBank");
+    c.eq(parsed.accountNumber, "102000334455", "Bóc đúng STK 102000334455");
+    c.eq(parsed.amount, 450_000, "450k → 450.000đ");
+    c.eq(parsed.accountName, "NGUYEN VAN B", "Tên người nhận in hoa, không dấu");
+    c.eq(parsed.memo, "tien cafe", "Nội dung 'tien cafe'");
+    c.ok(isPasteComplete(parsed) && looksLikePaymentMessage(parsed), "Đủ ngân hàng + STK + số tiền → tự phân tích & hiện VietQR");
+
+    const command = buildPasteCommand(parsed, raw);
+    c.ok(
+      command.startsWith("Chuyển 0,45 triệu tien cafe cho NGUYEN VAN B STK 102000334455 (PVcomBank)."),
+      "Lệnh chuẩn hóa đặt số tiền dạng 'x triệu' lên đầu",
+    );
+    c.includes(command, "Tin nhắn gốc: Ck cho anh 450k tiền cafe", "Giữ nguyên tin nhắn gốc cho Lá chắn AI");
+    const safe = await analyze(req(command));
+    c.eq(safe.parsedAmount, 450_000, "Bộ luật đọc đúng 450.000đ");
+    c.eq(safe.scamReport.riskLevel, "LOW", "Tin nhắn bình thường → AN TOÀN");
+    c.eq(safe.category, "Ăn uống", "Danh mục Ăn uống (cafe)");
+    c.includes(safe.recipient, "102000334455", "Người nhận chứa đúng STK sẽ nhận tiền thật");
+
+    const pvcb = findInstitution("PVCB");
+    const qr = buildVietQrPayload({
+      bankBin: pvcb?.bin ?? "",
+      accountNumber: parsed.accountNumber ?? "",
+      amount: parsed.amount,
+      memo: parsed.memo,
+    });
+    const decodedQr = decodeVietQr(qr).decoded;
+    c.ok(
+      Boolean(decodedQr?.crc.valid) &&
+        decodedQr?.bankBin === "970412" &&
+        decodedQr?.accountNumber === "102000334455" &&
+        decodedQr?.amount === 450_000 &&
+        decodedQr?.purpose === "tien cafe",
+      "VietQR thật: BIN 970412 + STK + 450.000đ + 'tien cafe', CRC hợp lệ",
+    );
+
+    c.eq(parsePastedAmount("1tr2"), 1_200_000, "'1tr2' → 1.200.000đ");
+    c.eq(parsePastedAmount("1,5 trieu"), 1_500_000, "'1,5 triệu' → 1.500.000đ");
+    c.eq(parsePastedAmount("1.200.000d"), 1_200_000, "'1.200.000đ' → 1.200.000đ");
+    c.eq(parsePastedAmount("450000 vnd"), 450_000, "'450000 vnd' → 450.000đ");
+    c.eq(parsePastedAmount("2 cu"), 2_000_000, "'2 củ' → 2.000.000đ");
+    c.eq(amountToTrieuPhrase(1_200_000), "1,2 triệu", "Số tiền dạng 'x triệu' cho bộ luật");
+
+    const grouped = parsePaymentMessage(
+      "Gửi giúp chị 1tr2 tiền học cho bé nhé. STK: 0071 0012 34567 Vietcombank, tên: Tran Thi Mai",
+    );
+    c.eq(grouped.accountNumber, "0071001234567", "Ghép STK viết tách nhóm '0071 0012 34567'");
+    c.eq(grouped.institutionCode, "VCB", "Nhận diện Vietcombank");
+    c.eq(grouped.amount, 1_200_000, "'1tr2' trong câu → 1.200.000đ");
+    c.eq(grouped.accountName, "TRAN THI MAI", "Tên lấy sau 'tên:'");
+    c.eq(grouped.memo, "tien hoc", "Nội dung 'tien hoc'");
+
+    const partial = parsePaymentMessage("Ck 450k vào STK 102000334455 nhé");
+    c.ok(looksLikePaymentMessage(partial) && !isPasteComplete(partial), "Thiếu ngân hàng → điền sẵn nhưng chưa tự phân tích");
+    const plain = parsePaymentMessage("Chuyển 1.200.000đ cho Lan");
+    c.eq(plain.accountNumber, null, "Số tiền 1.200.000 không bị nhầm thành STK");
+    c.ok(!looksLikePaymentMessage(plain), "Không có STK → Ctrl+V dán bình thường");
+
+    const scamRaw = "Anh ơi chuyển gấp 2tr phí nhận quà vào STK 1903456721 Techcombank cho Tran Van C nhé";
+    const scamParsed = parsePaymentMessage(scamRaw);
+    c.eq(scamParsed.accountNumber, "1903456721", "Bóc STK trong tin nhắn lừa đảo");
+    c.eq(scamParsed.institutionCode, "TCB", "Nhận diện Techcombank");
+    const scamCommand = buildPasteCommand(scamParsed, scamRaw);
+    const scam = await analyze({
+      commandText: scamCommand,
+      currentBudgets: DEFAULT_BUDGETS,
+      blacklist: expandBlacklistForText([...DEFAULT_BLACKLIST, "1903xxxx"], scamCommand),
+    });
+    c.eq(scam.scamReport.riskLevel, "HIGH", "STK cụm 1903xxxx + 'phí nhận quà' + 'chuyển gấp' → rủi ro CAO, khóa VietQR");
+    c.ge(scam.scamReport.riskScore, 90, "Điểm rủi ro rất cao");
+
+    const impersonation = "Cán bộ điều tra yêu cầu chuyển 5tr xác minh tài khoản vào STK 0123456789 Vietcombank";
+    const impParsed = parsePaymentMessage(impersonation);
+    const withOriginal = await analyze(req(buildPasteCommand(impParsed, impersonation)));
+    c.eq(withOriginal.scamReport.riskLevel, "HIGH", "Kèm 'Tin nhắn gốc' → vẫn bắt được mạo danh cán bộ điều tra");
+    const headOnly = await analyze(req(buildPasteCommand(impParsed, "")));
+    c.eq(
+      headOnly.scamReport.riskLevel,
+      "LOW",
+      "Đối chứng: chỉ gửi phần chuẩn hóa sẽ mất dấu hiệu — lý do lệnh luôn kèm tin nhắn gốc",
+    );
+  });
+
+  // F30 — 🍕 Chia tiền nhóm: chia đều, làm tròn minh bạch, mã VietQR thu tiền thật
+  await suite.run("F30", "Split Bill 1.200.000đ / 4 người = 300.000đ/người, VietQR thu tiền PVcomBank hợp lệ", async (c) => {
+    const even = splitBill(1_200_000, 4);
+    c.eq(even?.perPerson, 300_000, "1.200.000đ / 4 người = 300.000đ/người");
+    c.eq(even?.othersCount, 3, "3 người còn lại quét mã");
+    c.eq(even?.expectedFromOthers, 900_000, "Thu về 900.000đ");
+    c.eq(even?.surplus, 0, "Không có phần dư");
+    const rounded = splitBill(100_000, 3);
+    c.eq(rounded?.perPerson, 34_000, "100.000đ / 3 người → làm tròn lên 34.000đ");
+    c.eq(rounded?.surplus, 2_000, "Phần dư 2.000đ hiển thị minh bạch");
+    c.ok(
+      [
+        splitBill(0, 4),
+        splitBill(1_200_000, 1),
+        splitBill(1_200_000, 51),
+        splitBill(600_000_000, 4),
+        splitBill(1_200_000, 2.5),
+        splitBill(Number.NaN, 4),
+      ].every((item) => item === null),
+      "Từ chối tổng tiền / số người không hợp lệ",
+    );
+    c.eq(buildSplitMemo("ăn tối"), "Chia tien an toi", "Nội dung không dấu");
+    c.eq(buildSplitMemo(""), "Chia tien nhom", "Nội dung mặc định");
+
+    const payload = buildVietQrPayload({
+      bankBin: "970412",
+      accountNumber: "102000334455",
+      amount: even?.perPerson ?? 0,
+      memo: buildSplitMemo("ăn tối"),
+    });
+    const decoded = decodeVietQr(payload).decoded;
+    c.ok(Boolean(decoded?.crc.valid), "CRC-16/CCITT-FALSE hợp lệ");
+    c.eq(decoded?.bankBin, "970412", "BIN PVcomBank 970412");
+    c.eq(decoded?.amount, 300_000, "Số tiền 300.000đ/người trong mã");
+    c.eq(decoded?.purpose, "Chia tien an toi", "Tag 62.08 'Chia tien an toi'");
+    c.eq(inspectVietQr(payload, { blacklist: DEFAULT_BLACKLIST }).verdict, "SAFE", "VietQR Inspector xếp AN TOÀN");
+  });
+
+  // F31 — Danh bạ Tin cậy & Khóa ứng dụng: localStorage được làm sạch, PIN chỉ lưu dạng băm, mở khóa 2 phút
+  await suite.run("F31", "Hub store chống dữ liệu giả mạo, PIN 123456 băm SHA-256, phiên mở khóa tạo VietQR 2 phút", async (c) => {
+    const defaults = createDefaultHubState();
+    c.eq(defaults.uiMode, "pro", "Mặc định Chế độ Đầy đủ (Pro Mode)");
+    c.eq(
+      defaults.linkedAccounts.map((item) => `${item.institutionCode}:${item.last4}`).join(","),
+      "PVCB:4128,VCB:9821,MB:5502,MOMO:888",
+      "4 tài khoản & ví liên kết mẫu",
+    );
+    c.ok(
+      defaults.linkedAccounts.every((item) => item.accountNumber === "" && item.demo),
+      "Tài khoản mẫu không có STK đầy đủ → không tạo mã thu tiền cho tài khoản bịa",
+    );
+    c.ok(
+      defaults.trustedPayees.length === 3 && defaults.trustedPayees.every((item) => item.demo),
+      "3 người nhận mẫu được đánh dấu MẪU",
+    );
+    c.ok(isTrustedPayeeSaved(defaults, "VCB", "0071 0006 54321"), "Nhận ra người nhận đã lưu dù STK viết tách nhóm");
+    c.eq(
+      defaults.appLock.pinHash,
+      createHash("sha256").update(`${DEFAULT_PIN_SALT}:${DEFAULT_APP_PIN}`, "utf8").digest("hex"),
+      "PIN mặc định lưu dạng SHA-256(muối:PIN)",
+    );
+    c.eq(
+      Object.keys(defaults.appLock).sort().join(","),
+      "enabled,passkeyId,pinHash,pinSalt",
+      "Cấu hình khóa chỉ gồm băm + muối, không có PIN thô",
+    );
+    c.ok(verifyAppPin(defaults, "123456"), "PIN dự phòng 123456 mở khóa được");
+    c.ok(!verifyAppPin(defaults, "000000") && !verifyAppPin(defaults, "12345"), "PIN sai / thiếu số bị từ chối");
+    c.ok(isValidPin("123456") && !isValidPin("12a456") && !isValidPin("1234567"), "PIN gồm đúng 6 chữ số");
+    c.eq(
+      hashPin("654321", "salt-x1"),
+      createHash("sha256").update("salt-x1:654321", "utf8").digest("hex"),
+      "hashPin khớp node:crypto",
+    );
+
+    const tampered = sanitizeHubState({
+      uiMode: "hacker",
+      balanceHidden: "yes",
+      linkedAccounts: [{ id: "<script>", institutionCode: "VCB", accountNumber: "0071001234567", last4: "4567" }],
+      trustedPayees: [
+        {
+          id: "PAY-1",
+          label: "Mẹ",
+          relation: "ROOT",
+          institutionCode: "VCB",
+          accountNumber: "0071 0012 34567",
+          accountName: "Nguyễn Thị Mai",
+          demo: false,
+        },
+        { id: "PAY-2", label: "Lừa đảo", relation: "OTHER", institutionCode: "XYZ", accountNumber: "0071001234567" },
+        { id: "PAY-3", label: "", relation: "OTHER", institutionCode: "VCB", accountNumber: "0071001234567" },
+      ],
+      appLock: { enabled: true, pinSalt: "x", pinHash: "not-a-hash", passkeyId: "<img>" },
+    });
+    c.eq(tampered.uiMode, "pro", "uiMode lạ → Pro");
+    c.eq(tampered.balanceHidden, false, "balanceHidden phải là boolean thật");
+    c.eq(tampered.linkedAccounts.length, 4, "Tài khoản có id độc hại bị loại → dùng lại mặc định");
+    c.eq(tampered.trustedPayees.length, 1, "Chỉ giữ người nhận hợp lệ (ngân hàng lạ / thiếu tên bị loại)");
+    c.eq(tampered.trustedPayees[0]?.accountNumber, "0071001234567", "STK được chuẩn hóa");
+    c.eq(tampered.trustedPayees[0]?.relation, "OTHER", "Quan hệ lạ → OTHER");
+    c.eq(tampered.trustedPayees[0]?.accountName, "NGUYEN THI MAI", "Tên chủ TK in hoa, không dấu");
+    c.eq(tampered.appLock.enabled, true, "Giữ trạng thái bật khóa");
+    c.eq(tampered.appLock.passkeyId, null, "passkeyId sai định dạng bị loại");
+    c.ok(verifyAppPin(tampered, DEFAULT_APP_PIN), "Dữ liệu khóa hỏng không làm treo ứng dụng (về PIN mặc định)");
+    c.eq(sanitizeHubState("garbage").trustedPayees.length, 3, "Dữ liệu hỏng → khôi phục mặc định");
+
+    const completed = sanitizeHubState({
+      linkedAccounts: [
+        {
+          id: "ACC-X",
+          institutionCode: "PVCB",
+          accountNumber: "1020 0033 4455",
+          last4: "9999",
+          holderName: "Nguyễn Văn B",
+          demo: true,
+        },
+      ],
+      defaultSourceId: "ACC-UNKNOWN",
+    });
+    c.eq(completed.linkedAccounts[0]?.last4, "4455", "4 số cuối lấy từ STK thật");
+    c.eq(completed.linkedAccounts[0]?.demo, false, "Có STK đầy đủ → không còn là tài khoản mẫu");
+    c.eq(completed.defaultSourceId, "ACC-X", "Nguồn mặc định không tồn tại → tài khoản đầu tiên");
+
+    c.eq(QR_UNLOCK_WINDOW_MS, 120_000, "Mở khóa để tạo VietQR có hiệu lực 2 phút");
+    c.ok(isUnlockFresh(1_000, 1_000 + 119_999) && !isUnlockFresh(1_000, 1_000 + 120_000), "Hết 2 phút → phải xác thực lại");
+    c.ok(!isUnlockFresh(null, 5_000) && !isUnlockFresh(5_000, 4_000), "Chưa mở khóa / đồng hồ lùi → coi như đang khóa");
+    c.eq(toBase64Url(new Uint8Array([251, 255, 0, 1])), "-_8AAQ", "base64url không chứa + / =");
+    c.eq(Array.from(fromBase64Url("-_8AAQ")).join(","), "251,255,0,1", "Giải mã base64url khứ hồi");
   });
 
   suite.finish();

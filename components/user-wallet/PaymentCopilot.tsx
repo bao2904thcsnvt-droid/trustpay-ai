@@ -2,6 +2,43 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Bot, Send, Sparkles, Trash2, User } from "lucide-react";
+import { useHasMounted } from "@/lib/hooks/use-has-mounted";
+
+// Web Speech API (chưa có trong lib DOM của TypeScript) — khai báo tối thiểu.
+interface SpeechRecognitionAlternativeLike {
+  transcript: string;
+}
+interface SpeechRecognitionResultLike {
+  readonly isFinal: boolean;
+  readonly length: number;
+  [index: number]: SpeechRecognitionAlternativeLike;
+}
+interface SpeechRecognitionEventLike {
+  readonly resultIndex: number;
+  readonly results: { readonly length: number; [index: number]: SpeechRecognitionResultLike };
+}
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  maxAlternatives: number;
+  start(): void;
+  stop(): void;
+  abort(): void;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onend: (() => void) | null;
+}
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
+
+function getSpeechRecognition(): SpeechRecognitionCtor | null {
+  if (typeof window === "undefined") return null;
+  const scope = window as unknown as {
+    SpeechRecognition?: SpeechRecognitionCtor;
+    webkitSpeechRecognition?: SpeechRecognitionCtor;
+  };
+  return scope.SpeechRecognition ?? scope.webkitSpeechRecognition ?? null;
+}
 import type { BudgetCategory, CategoryName, RecurringSubscription } from "@/types/trustpay";
 import {
   answerBudget,
@@ -53,6 +90,17 @@ export default function PaymentCopilot({
   const [input, setInput] = useState("");
   const [extraction, setExtraction] = useState<Extraction | null>(null);
   const listRef = useRef<HTMLOListElement | null>(null);
+  // Vòng 4: Voice Copilot — "🎙️ Nói lệnh" (Web Speech API, vi-VN / en-US).
+  const mounted = useHasMounted();
+  const voiceSupported = mounted && getSpeechRecognition() !== null;
+  const [listening, setListening] = useState(false);
+  const [voiceError, setVoiceError] = useState(false);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const submitRef = useRef<(raw: string) => void>(() => {});
+
+  useEffect(() => {
+    return () => recognitionRef.current?.abort();
+  }, []);
 
   useEffect(() => {
     const list = listRef.current;
@@ -116,6 +164,55 @@ export default function PaymentCopilot({
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     submit(input);
+  };
+
+  useEffect(() => {
+    submitRef.current = submit;
+  });
+
+  const toggleVoice = () => {
+    if (listening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const Recognition = getSpeechRecognition();
+    if (!Recognition) {
+      setVoiceError(true);
+      return;
+    }
+    const recognition = new Recognition();
+    recognition.lang = lang === "en" ? "en-US" : "vi-VN";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (event) => {
+      let transcript = "";
+      let isFinal = false;
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        transcript += result[0]?.transcript ?? "";
+        if (result.isFinal) isFinal = true;
+      }
+      const text = transcript.trim().slice(0, 300);
+      setInput(text);
+      if (isFinal && text) {
+        submitRef.current(text);
+      }
+    };
+    recognition.onerror = () => {
+      setVoiceError(true);
+      setListening(false);
+    };
+    recognition.onend = () => setListening(false);
+    recognitionRef.current = recognition;
+    setVoiceError(false);
+    setListening(true);
+    try {
+      recognition.start();
+    } catch {
+      setListening(false);
+      setVoiceError(true);
+    }
   };
 
   return (
@@ -215,6 +312,20 @@ export default function PaymentCopilot({
           className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#d82d8b] focus:ring-4 focus:ring-pink-100 focus:outline-none"
         />
         <button
+          type="button"
+          onClick={toggleVoice}
+          disabled={mounted && !voiceSupported}
+          aria-pressed={listening}
+          title={voiceSupported ? (listening ? t.voice.stop : t.voice.start) : t.voice.unsupported}
+          className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-2xl px-3 py-2.5 text-xs font-bold whitespace-nowrap transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+            listening
+              ? "tp-call-pulse bg-rose-600 text-white"
+              : "border border-pink-200 bg-white text-[#a50064] hover:bg-pink-50"
+          }`}
+        >
+          {listening ? t.voice.stop : t.voice.start}
+        </button>
+        <button
           type="submit"
           disabled={!input.trim()}
           className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-2xl bg-gradient-to-r from-[#a50064] to-[#d82d8b] px-4 py-2.5 text-xs font-bold text-white shadow-sm shadow-[#a50064]/25 transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
@@ -223,6 +334,15 @@ export default function PaymentCopilot({
           <span className="hidden sm:inline">{t.copilot.send}</span>
         </button>
       </form>
+      {(listening || voiceError || (mounted && !voiceSupported)) && (
+        <p
+          role="status"
+          className={`mt-1.5 text-[11px] font-semibold ${listening ? "text-rose-700" : "text-amber-700"}`}
+        >
+          {listening ? t.voice.listening : voiceError ? t.voice.error : t.voice.unsupported}
+        </p>
+      )}
+      {voiceSupported && <p className="mt-1 text-[10px] text-slate-400">{t.voice.privacy}</p>}
 
       <div className="mt-3">
         <p className="text-[10px] font-bold tracking-wide text-slate-500 uppercase">{t.copilot.chipsLabel}</p>

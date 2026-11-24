@@ -112,10 +112,10 @@ export default function AnomalyAlertBanner({ state, onLock, highlighted = false 
                     className="flex flex-wrap items-center gap-2 rounded-xl bg-white/10 px-3 py-1.5 text-[11px]"
                   >
                     <span className="font-mono text-white/70">{event.timeLabel}</span>
-                    <span className="font-mono font-semibold">{maskRecipientForDisplay(event.senderAccount)}</span>
+                    <span className="tp-code font-semibold">{maskRecipientForDisplay(event.senderAccount)}</span>
                     <span className="text-white/70">{event.senderBank}</span>
                     <ArrowRight className="h-3 w-3 text-white/60" />
-                    <span className="font-mono font-semibold">{ANOMALY_CLUSTER_PATTERN}</span>
+                    <span className="tp-code font-semibold">{ANOMALY_CLUSTER_PATTERN}</span>
                     <span className="ml-auto font-mono font-bold">{money(event.amount)}</span>
                   </li>
                 ))}
@@ -124,7 +124,7 @@ export default function AnomalyAlertBanner({ state, onLock, highlighted = false 
             </div>
             <div className="lg:col-span-5">
               <p className="mb-1.5 text-[11px] font-semibold text-white/80">{t.anomaly.hub}</p>
-              <p className="rounded-xl bg-white/15 px-3 py-2 font-mono text-sm font-bold">
+              <p className="tp-code rounded-xl bg-white/15 px-3 py-2 text-sm font-bold">
                 {maskRecipientForDisplay(ANOMALY_HUB_ACCOUNT)}
               </p>
               <p className="mt-3 mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-white/80">
@@ -135,7 +135,7 @@ export default function AnomalyAlertBanner({ state, onLock, highlighted = false 
                 {[ANOMALY_CLUSTER_PATTERN, ...ANOMALY_LINKED_MULE_ACCOUNTS].map((account) => (
                   <span
                     key={account}
-                    className={`rounded-lg px-2 py-1 font-mono text-[11px] font-semibold ${
+                    className={`tp-code rounded-lg px-2 py-1 text-[11px] font-semibold ${
                       isLocked ? "bg-white/25" : "bg-white/10"
                     }`}
                   >

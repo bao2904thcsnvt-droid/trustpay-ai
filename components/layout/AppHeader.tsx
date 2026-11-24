@@ -139,7 +139,7 @@ export default function AppHeader({
   };
 
   const tabClass = (tab: AppTab) =>
-    `flex min-w-[76%] shrink-0 cursor-pointer snap-start items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-all sm:min-w-0 sm:flex-1 lg:flex-initial ${
+    `flex min-w-[76%] shrink-0 cursor-pointer snap-start items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-all sm:min-w-0 sm:flex-1 lg:flex-initial lg:shrink ${
       activeTab === tab
         ? "bg-gradient-to-r from-[#a50064] to-[#d82d8b] text-white shadow-sm shadow-[#a50064]/25"
         : "text-slate-600 hover:bg-white/70 hover:text-slate-900"
@@ -160,7 +160,9 @@ export default function AppHeader({
         className={tabClass("user-wallet")}
       >
         <Wallet className="h-4 w-4 shrink-0" />
-        <span className="truncate">{t.header.walletTab}</span>
+        {/* Laptop 1024–1535px: nhãn ngắn để thanh tiêu đề không tràn ra ngoài màn hình. */}
+        <span className="truncate lg:hidden 2xl:inline">{t.header.walletTab}</span>
+        <span className="hidden truncate lg:inline 2xl:hidden">{t.app.walletShort}</span>
       </button>
 
       <button
@@ -170,7 +172,8 @@ export default function AppHeader({
         className={tabClass("fintech-ops")}
       >
         <ShieldAlert className="h-4 w-4 shrink-0" />
-        <span className="truncate">{t.header.opsTab}</span>
+        <span className="truncate lg:hidden 2xl:inline">{t.header.opsTab}</span>
+        <span className="hidden truncate lg:inline 2xl:hidden">{t.app.screen.ops}</span>
         <span
           title={t.header.pendingAlerts(pendingAlertsCount)}
           className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 font-mono text-xs font-bold ${
@@ -218,7 +221,7 @@ export default function AppHeader({
       <span className="flex min-w-0 flex-col items-start leading-tight">
         <span className="flex items-center gap-2">
           <span className="tp-brand-word">{t.cine.brand}</span>
-          <span className="hidden items-center gap-1 rounded-full border border-pink-200 bg-pink-50 px-2 py-0.5 text-[10px] font-semibold text-[#a50064] xl:inline-flex">
+          <span className="hidden items-center gap-1 rounded-full border border-pink-200 bg-pink-50 px-2 py-0.5 text-[10px] font-semibold text-[#a50064] 2xl:inline-flex">
             <Cloud className="h-3 w-3" />
             {t.common.awsBadge}
           </span>
@@ -250,7 +253,7 @@ export default function AppHeader({
         {showTabs && (
           <nav
             aria-label={t.header.navLabel}
-            className="mx-auto hidden items-center gap-1 rounded-2xl bg-slate-100 p-1 lg:flex"
+            className="mx-auto hidden min-w-0 items-center gap-1 rounded-2xl bg-slate-100 p-1 lg:flex"
           >
             {tabs}
           </nav>
@@ -261,6 +264,7 @@ export default function AppHeader({
           {onModeChange && <ModeToggle mode={uiMode} onChange={onModeChange} />}
 
           <div className="hidden items-center gap-2 lg:flex">
+            {/* Từ 1536px mới đủ chỗ cho cả nhóm nút; nhỏ hơn thì gom vào menu ⋯ (không tràn màn hình). */}
             {onToggleEmbed && !easyMode && (
               <button
                 type="button"
@@ -268,7 +272,7 @@ export default function AppHeader({
                 aria-pressed={embedMode}
                 aria-label={embedMode ? t.sdk.exit : t.sdk.toggle}
                 title={t.sdk.toggleTitle}
-                className={`inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold whitespace-nowrap transition-all ${
+                className={`hidden min-h-10 cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold whitespace-nowrap transition-all 2xl:inline-flex ${
                   embedMode
                     ? "border-sky-600 bg-sky-600 text-white hover:bg-sky-700"
                     : "border-sky-200 bg-sky-50 text-sky-800 hover:border-sky-300 hover:bg-sky-100"
@@ -283,7 +287,7 @@ export default function AppHeader({
                 type="button"
                 onClick={onOpenGuide}
                 title={t.nav.guideTitle}
-                className="relative inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#a50064] to-[#d82d8b] px-3 py-2 text-xs font-bold text-white shadow-sm shadow-[#a50064]/25 transition-all hover:brightness-110"
+                className="relative hidden min-h-10 cursor-pointer items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#a50064] to-[#d82d8b] px-3 py-2 text-xs font-bold text-white shadow-sm shadow-[#a50064]/25 transition-all hover:brightness-110 xl:inline-flex"
               >
                 <BookOpen className="h-4 w-4 shrink-0" />
                 <span className="whitespace-nowrap">{t.nav.guideShort}</span>
@@ -296,20 +300,26 @@ export default function AppHeader({
             )}
 
             {onOpenFinOps && !easyMode && (
-              <button type="button" onClick={onOpenFinOps} title={t.nav.finopsTitle} className={ghostButton}>
+              <button
+                type="button"
+                onClick={onOpenFinOps}
+                title={t.nav.finopsTitle}
+                className={`${ghostButton.replace("inline-flex ", "")} hidden 2xl:inline-flex`}
+              >
                 <Gauge className="h-4 w-4 shrink-0" />
-                <span className="hidden 2xl:inline">{t.nav.finops}</span>
-                <span className="2xl:hidden">{t.nav.finopsShort}</span>
+                <span>{t.nav.finopsShort}</span>
               </button>
             )}
 
-            <LanguageToggle />
+            <div className="hidden 2xl:block">
+              <LanguageToggle />
+            </div>
 
             <button
               type="button"
               onClick={handleResetClick}
               title={t.header.resetTitle}
-              className={`inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold whitespace-nowrap transition-all ${resetTone}`}
+              className={`hidden min-h-10 cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold whitespace-nowrap transition-all 2xl:inline-flex ${resetTone}`}
             >
               {resetContent}
             </button>
@@ -346,7 +356,7 @@ export default function AppHeader({
                 </>
               )}
               {!guideSeen && !menuOpen && (
-                <span aria-hidden="true" className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-amber-400 lg:hidden" />
+                <span aria-hidden="true" className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-amber-400 xl:hidden" />
               )}
             </button>
 
@@ -355,10 +365,10 @@ export default function AppHeader({
                 id="tp-app-menu"
                 className="tp-menu absolute top-full right-0 z-50 mt-2 w-[min(calc(100vw-2rem),21rem)] space-y-2 rounded-3xl border border-slate-200 bg-white p-2.5 shadow-2xl"
               >
-                {/* Màn hình nhỏ: các nút của thanh laptop gom vào đây */}
-                <div className="space-y-1 border-b border-slate-200 pb-2 lg:hidden">
+                {/* Dưới 1536px: các nút của thanh laptop gom vào đây (Hướng dẫn hiện ngoài thanh từ 1280px). */}
+                <div className="space-y-1 border-b border-slate-200 pb-2 2xl:hidden">
                   {onOpenGuide && (
-                    <button type="button" onClick={fromMenu(onOpenGuide)} className={menuItem}>
+                    <button type="button" onClick={fromMenu(onOpenGuide)} className={`${menuItem} xl:hidden`}>
                       <BookOpen className="h-4 w-4 shrink-0 text-[#a50064]" />
                       <span className="min-w-0 flex-1">{t.nav.guide}</span>
                       {!guideSeen && (

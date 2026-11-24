@@ -114,7 +114,7 @@ export default function SdkEventInspector({ events, onClear, defaultOpen = true 
                         <span className="font-mono text-slate-400">{formatClock(record.at, true)}</span>
                         {record.direction === "OUTBOUND" ? (
                           <>
-                            <span className="font-mono font-semibold text-white">{record.token.event}</span>
+                            <span className="tp-code font-semibold text-white">{record.token.event}</span>
                             <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-bold ${DECISION_STYLE[record.token.decision]}`}>
                               {record.token.decision}
                             </span>
@@ -139,7 +139,7 @@ export default function SdkEventInspector({ events, onClear, defaultOpen = true 
                             </span>
                           </p>
                         )}
-                        <pre className="max-h-72 overflow-auto rounded-xl bg-black/40 p-2 font-mono text-[10px] leading-relaxed text-emerald-200">
+                        <pre className="tp-code max-h-72 overflow-auto rounded-xl bg-black/40 p-2 text-[10px] leading-relaxed text-emerald-200">
                           {json}
                         </pre>
                         <button

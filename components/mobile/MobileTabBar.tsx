@@ -13,7 +13,7 @@ export interface MobileTabBarProps {
 
 /**
  * Thanh Tab Bar kiểu app ngân hàng cố định ở đáy màn hình (hỗ trợ `env(safe-area-inset-bottom)`):
- * Trang chủ · Chuyển/Rút · Quét QR (nút tròn trắng nổi ở giữa) · Ngân hàng · Lá chắn.
+ * Trang chủ · Chuyển/Rút · Quét QR (nút tròn nổi ở giữa) · Ngân hàng · Lá chắn.
  */
 export default function MobileTabBar({ active, onSelect }: MobileTabBarProps) {
   const { t } = useI18n();
@@ -26,7 +26,7 @@ export default function MobileTabBar({ active, onSelect }: MobileTabBarProps) {
       aria-current={active === id ? "page" : undefined}
       onClick={() => onSelect(id)}
     >
-      <Icon className="h-5 w-5" aria-hidden="true" />
+      <Icon className="h-[22px] w-[22px]" aria-hidden="true" />
       <span>{label}</span>
     </button>
   );
@@ -35,7 +35,7 @@ export default function MobileTabBar({ active, onSelect }: MobileTabBarProps) {
     <nav className="mb-tabbar" aria-label={t.mob.tabsLabel}>
       {tab("home", t.mob.tabs.home, House)}
       {tab("transfer", t.mob.tabs.transfer, ArrowLeftRight)}
-      <div className="mb-tab-wrap">
+      <div className="mb-tab-wrap" data-active={active === "scan" ? "true" : "false"}>
         <button
           type="button"
           className="mb-tab-scan"
@@ -45,10 +45,7 @@ export default function MobileTabBar({ active, onSelect }: MobileTabBarProps) {
         >
           <ScanLine className="h-6 w-6" aria-hidden="true" />
         </button>
-        <span
-          className="text-[0.68rem] font-medium"
-          style={{ color: active === "scan" ? "#ffffff" : "var(--muted)" }}
-        >
+        <span className="mb-tab-scan-label" aria-hidden="true">
           {t.mob.tabs.scan}
         </span>
       </div>

@@ -76,7 +76,7 @@ export default function EmbeddedSdkShell({
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-600 px-2.5 py-1 text-[10px] font-bold text-white">
                   <Plug className="h-3.5 w-3.5" />
-                  {t.sdk.sdkBadge} · <span className="font-mono">{t.sdk.sdkHook}</span>
+                  {t.sdk.sdkBadge} · <span className="tp-code">{t.sdk.sdkHook}</span>
                 </span>
                 <div role="tablist" aria-label={t.sdk.sdkBadge} className="flex min-w-[220px] gap-1 rounded-2xl bg-slate-100 p-1">
                   <button
@@ -125,7 +125,7 @@ export default function EmbeddedSdkShell({
                       <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-rose-600" />
                     )}
                     <span>{signatureValid ? t.sdk.signatureOk : t.sdk.signatureBad}</span>
-                    <span className="truncate font-mono text-[10px] text-slate-400">{latestToken.signatureHash.slice(0, 20)}…</span>
+                    <span className="tp-code truncate text-[10px] text-slate-400">{latestToken.signatureHash.slice(0, 20)}…</span>
                   </li>
                   <li className="flex items-center gap-1.5 text-slate-700">
                     <Fingerprint className="h-3.5 w-3.5 shrink-0 text-sky-600" />

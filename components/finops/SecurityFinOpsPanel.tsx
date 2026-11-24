@@ -278,7 +278,7 @@ export default function SecurityFinOpsPanel({ onClose, lastTrace }: SecurityFinO
                   : "…"}
             </p>
             {preview.commandHash && (
-              <p className="mt-1 font-mono text-[10px] break-all text-slate-400">
+              <p className="tp-code mt-1 text-[10px] break-all text-slate-400">
                 {t.finops.piiHash(`${preview.commandHash.slice(0, 24)}…`)}
               </p>
             )}

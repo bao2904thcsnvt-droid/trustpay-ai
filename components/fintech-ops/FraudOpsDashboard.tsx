@@ -110,36 +110,37 @@ export default function FraudOpsDashboard({
   return (
     <div className="flex flex-col gap-6">
       {/* 1. 3 Thẻ KPI tổng quan */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="relative overflow-hidden rounded-3xl border border-amber-200/90 bg-white p-5 shadow-xs">
+      {/* Điện thoại: 2 thẻ đếm cạnh nhau + thẻ tổng tiền rộng toàn hàng (đỡ cuộn 3 thẻ cao). */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+        <div className="relative overflow-hidden rounded-3xl border border-amber-200/90 bg-white p-4 shadow-xs sm:p-5">
           <div className="flex items-start justify-between gap-3">
-            <div>
+            <div className="min-w-0">
               <p className="text-xs font-semibold text-amber-700">{t.ops.kpiPending}</p>
               <p className="mt-2 font-mono text-3xl font-extrabold tracking-tight text-slate-900">{pendingCount}</p>
               <p className="mt-1 text-xs text-slate-500">
                 {pendingCount > 0 ? t.ops.kpiPendingActive : t.ops.kpiPendingNone}
               </p>
             </div>
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 ring-1 ring-amber-200/70">
+            <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 ring-1 ring-amber-200/70 sm:flex">
               <ShieldAlert className="h-5 w-5" />
             </div>
           </div>
         </div>
 
-        <div className="relative overflow-hidden rounded-3xl border border-rose-200/90 bg-white p-5 shadow-xs">
+        <div className="relative overflow-hidden rounded-3xl border border-rose-200/90 bg-white p-4 shadow-xs sm:p-5">
           <div className="flex items-start justify-between gap-3">
-            <div>
+            <div className="min-w-0">
               <p className="text-xs font-semibold text-rose-700">{t.ops.kpiBlocked}</p>
               <p className="mt-2 font-mono text-3xl font-extrabold tracking-tight text-rose-700">{blockedCount}</p>
               <p className="mt-1 text-xs text-slate-500">{t.ops.kpiBlockedDesc(blacklist.length)}</p>
             </div>
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 ring-1 ring-rose-200/70">
+            <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 ring-1 ring-rose-200/70 sm:flex">
               <ShieldBan className="h-5 w-5" />
             </div>
           </div>
         </div>
 
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#a50064] via-[#c21878] to-[#d82d8b] p-5 text-white shadow-md shadow-[#a50064]/20">
+        <div className="relative col-span-2 overflow-hidden rounded-3xl bg-gradient-to-br from-[#a50064] via-[#c21878] to-[#d82d8b] p-4 text-white shadow-md shadow-[#a50064]/20 sm:col-span-1 sm:p-5">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute -top-8 -right-8 h-28 w-28 rounded-full bg-white/10 blur-2xl"
@@ -221,7 +222,8 @@ export default function FraudOpsDashboard({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-slate-100 p-1">
+          {/* Điện thoại: lưới 2×2 cân đối thay vì 3 + 1 nút bị rớt dòng. */}
+          <div className="grid grid-cols-2 gap-1.5 rounded-2xl bg-slate-100 p-1 sm:flex sm:flex-wrap sm:items-center">
             <span className="hidden items-center gap-1 px-2 text-[11px] font-semibold text-slate-500 md:inline-flex">
               <Filter className="h-3 w-3" />
               {t.ops.filterLabel}
@@ -231,7 +233,7 @@ export default function FraudOpsDashboard({
                 key={tab.id}
                 type="button"
                 onClick={() => setStatusFilter(tab.id)}
-                className={`cursor-pointer rounded-xl px-3 py-1.5 text-xs font-semibold transition-all ${
+                className={`min-h-10 cursor-pointer rounded-xl px-3 py-1.5 text-xs font-semibold transition-all sm:min-h-0 ${
                   statusFilter === tab.id ? "bg-white text-[#a50064] shadow-2xs" : "text-slate-600 hover:text-slate-900"
                 }`}
               >

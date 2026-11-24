@@ -103,18 +103,19 @@ export default function CallShieldBar({ onStart, onEnd, highlighted = false }: C
         >
           {active ? <PhoneCall className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}
         </span>
-        <div className="min-w-0 flex-1">
+        {/* `min-w-[12rem]`: trong hàng flex-wrap, cột chữ không bị ép còn ~1 từ/dòng — thiếu chỗ thì nút xuống dòng. */}
+        <div className="min-w-[12rem] flex-1">
           <p className={`text-sm font-bold ${active ? "text-rose-800" : "text-slate-900"}`}>
             {active ? t.call.statusActive(CALL_SHIELD_CALLER) : t.call.statusNormal}
           </p>
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] leading-relaxed text-slate-500">
             {active ? `${t.call.elapsed(formatElapsed(elapsed))} • ${t.call.risk(risk.score)}` : t.call.normalDesc}
           </p>
         </div>
         <button
           type="button"
           onClick={active ? onEnd : onStart}
-          className={`inline-flex cursor-pointer items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition-all ${
+          className={`inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition-all sm:w-auto ${
             active
               ? "bg-slate-900 text-white hover:bg-slate-800"
               : "border border-rose-200 bg-white text-rose-700 hover:bg-rose-50"

@@ -182,7 +182,7 @@ export default function LinkedAccountsBar({ accounts, defaultSourceId, onSourceC
               maxLength={24}
               autoComplete="off"
               onChange={(event) => setAccountNumber(event.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-900 focus:border-[#d82d8b] focus:outline-none"
+              className="tp-code w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-[#d82d8b] focus:outline-none"
             />
           </label>
           <label className="block">

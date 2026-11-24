@@ -292,7 +292,7 @@ export default function BankLinkingPanel({ balance, onToast }: BankLinkingPanelP
             aria-label={t.mob.bank.accountNo}
             placeholder={t.mob.bank.accountNo}
             onChange={(event) => setCompleteNumber(event.target.value)}
-            className={`${inputClass} min-w-0 flex-1 font-mono`}
+            className={`${inputClass} tp-code min-w-0 flex-1`}
           />
           <button
             type="button"
@@ -314,8 +314,7 @@ export default function BankLinkingPanel({ balance, onToast }: BankLinkingPanelP
             setAdding(true);
             setError(false);
           }}
-          className="mt-3 inline-flex min-h-12 w-full cursor-pointer items-center justify-center rounded-full px-5 text-sm font-bold"
-          style={{ backgroundColor: "#ffffff", color: "#000000" }}
+          className="tp-pill-btn mt-3 inline-flex min-h-12 w-full cursor-pointer items-center justify-center rounded-full px-5 text-sm font-bold"
         >
           + {t.mob.bank.addNew}
         </button>
@@ -350,7 +349,7 @@ export default function BankLinkingPanel({ balance, onToast }: BankLinkingPanelP
               maxLength={24}
               autoComplete="off"
               onChange={(event) => setNumber(event.target.value)}
-              className={`${inputClass} font-mono`}
+              className={`${inputClass} tp-code`}
             />
           </label>
           <label className="block">
@@ -369,7 +368,7 @@ export default function BankLinkingPanel({ balance, onToast }: BankLinkingPanelP
               type="checkbox"
               checked={makeDefault}
               onChange={(event) => setMakeDefault(event.target.checked)}
-              className="h-5 w-5 accent-white"
+              className="h-5 w-5 accent-sky-500"
             />
             {t.mob.bank.makeDefault}
           </label>
@@ -377,8 +376,7 @@ export default function BankLinkingPanel({ balance, onToast }: BankLinkingPanelP
           <div className="flex gap-2">
             <button
               type="submit"
-              className="min-h-12 flex-1 cursor-pointer rounded-full text-sm font-bold"
-              style={{ backgroundColor: "#ffffff", color: "#000000" }}
+              className="tp-pill-btn min-h-12 flex-1 cursor-pointer rounded-full text-sm font-bold"
             >
               {t.mob.bank.next}
             </button>
@@ -418,8 +416,7 @@ export default function BankLinkingPanel({ balance, onToast }: BankLinkingPanelP
           <button
             type="submit"
             disabled={pin.length !== 6 || locked}
-            className="min-h-12 w-full cursor-pointer rounded-full text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50"
-            style={{ backgroundColor: "#ffffff", color: "#000000" }}
+            className="tp-pill-btn min-h-12 w-full cursor-pointer rounded-full text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t.mob.bank.confirm}
           </button>

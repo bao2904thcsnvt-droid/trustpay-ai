@@ -124,7 +124,7 @@ export default function PayeeFields({ draft, onChange, disabled = false }: Payee
             onChange={(event) => onChange({ ...draft, accountNumber: event.target.value.replace(/[^0-9A-Za-z\s.-]/g, "") })}
             placeholder={isWallet ? t.payee.walletPlaceholder : t.payee.accountPlaceholder}
             aria-invalid={showError}
-            className={`${inputClass} font-mono`}
+            className={`${inputClass} tp-code`}
           />
         </label>
 

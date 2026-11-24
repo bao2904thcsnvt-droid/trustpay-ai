@@ -12,7 +12,63 @@ import {
 } from "@/lib/ops/anomaly-cluster";
 import { maskRecipientForDisplay } from "@/lib/security/pii-display";
 import { formatDateTime } from "@/lib/wallet/format";
+import { useMediaQuery } from "@/lib/hooks/use-media-query";
 import { useI18n } from "@/components/i18n/I18nProvider";
+
+/** Điện thoại: đồ thị dọc (chữ ~11–12px thật thay vì bị thu nhỏ còn ~5px). */
+const COMPACT_GRAPH_QUERY = "(max-width: 640px)";
+
+interface GraphLayout {
+  W: number;
+  H: number;
+  hub: { x: number; y: number; r: number };
+  victims: { senderAccount: string; amount: number; x: number; y: number }[];
+  mules: { account: string; blocked: boolean; x: number; y: number }[];
+  compact: boolean;
+}
+
+function buildGraphLayout(compact: boolean, isBlocked: (account: string) => boolean): GraphLayout {
+  const muleAccounts = ANOMALY_LINKED_MULE_ACCOUNTS.filter((account) => account !== ANOMALY_HUB_ACCOUNT);
+  const last = (list: readonly unknown[]) => Math.max(1, list.length - 1);
+  if (compact) {
+    // Nguồn chuyển đến xếp dọc bên trái → STK trung chuyển bên phải → cụm STK liên quan ở hàng dưới.
+    const W = 340;
+    const H = 312;
+    return {
+      W,
+      H,
+      compact,
+      hub: { x: 270, y: 150, r: 26 },
+      victims: ANOMALY_INBOUND_TRANSFERS.map((event, i) => ({ ...event, x: 176, y: 34 + i * 40 })),
+      mules: muleAccounts.map((account, i, list) => ({
+        account,
+        blocked: isBlocked(account),
+        x: 66 + i * ((W - 132) / last(list)),
+        y: 262,
+      })),
+    };
+  }
+  const W = 640;
+  const H = 300;
+  return {
+    W,
+    H,
+    compact,
+    hub: { x: W / 2, y: H / 2, r: 28 },
+    // x = 124: nhãn STK (canh phải) không còn bị cắt ở mép trái.
+    victims: ANOMALY_INBOUND_TRANSFERS.map((event, i) => ({
+      ...event,
+      x: 124,
+      y: 34 + i * ((H - 68) / last(ANOMALY_INBOUND_TRANSFERS)),
+    })),
+    mules: muleAccounts.map((account, i, list) => ({
+      account,
+      blocked: isBlocked(account),
+      x: W - 104,
+      y: 60 + i * ((H - 120) / last(list)),
+    })),
+  };
+}
 
 export interface OpsAnalyticsPanelProps {
   prediction: CoercionPrediction | null;
@@ -25,8 +81,9 @@ function SignedBar({ label, pct }: { label: string; pct: number }) {
   const positive = pct > 0;
   const width = Math.min(100, Math.abs(pct));
   return (
-    <li className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_3.5rem] items-center gap-2 text-xs">
-      <span className="min-w-0 truncate text-slate-700" title={label}>
+    // Điện thoại: tên yếu tố nằm trên một dòng riêng (không bị cắt), thanh + giá trị ở dòng dưới.
+    <li className="grid grid-cols-[minmax(0,1fr)_3.5rem] items-center gap-x-2 gap-y-1 text-xs sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_3.5rem] sm:gap-y-0">
+      <span className="col-span-2 min-w-0 leading-snug text-slate-700 sm:col-span-1 sm:truncate" title={label}>
         {label}
       </span>
       <span className="relative h-2.5 rounded-full bg-slate-100" aria-hidden="true">
@@ -66,22 +123,14 @@ export default function OpsAnalyticsPanel({ prediction, report, clusterLocked, b
   };
 
   // --- Mule graph layout (toạ độ cố định, xác định) ---
-  const W = 640;
-  const H = 300;
-  const hub = { x: W / 2, y: H / 2 };
-  const victims = ANOMALY_INBOUND_TRANSFERS.map((event, i) => ({
-    ...event,
-    x: 92,
-    y: 34 + i * ((H - 68) / Math.max(1, ANOMALY_INBOUND_TRANSFERS.length - 1)),
-  }));
-  const mules = ANOMALY_LINKED_MULE_ACCOUNTS.filter((account) => account !== ANOMALY_HUB_ACCOUNT).map((account, i, list) => ({
-    account,
-    blocked: clusterLocked || blacklist.includes(account),
-    x: W - 96,
-    y: 60 + i * ((H - 120) / Math.max(1, list.length - 1)),
-  }));
-  const hubBlocked = clusterLocked || blacklist.includes(ANOMALY_HUB_ACCOUNT);
+  const compactGraph = useMediaQuery(COMPACT_GRAPH_QUERY);
+  const isBlocked = (account: string) => clusterLocked || blacklist.includes(account);
+  const { W, H, hub, victims, mules, compact } = buildGraphLayout(compactGraph, isBlocked);
+  const hubBlocked = isBlocked(ANOMALY_HUB_ACCOUNT);
   const maxAmount = Math.max(...ANOMALY_INBOUND_TRANSFERS.map((event) => event.amount));
+  const hubTone = hubBlocked ? "#F43F5E" : "#F59E0B";
+  const labelSize = compact ? 12.5 : 11;
+  const amountSize = compact ? 11.5 : 10;
 
   const agentShares = report ? decomposeAgentRisk(report.sources).filter((item) => item.risk > 0) : [];
 
@@ -136,73 +185,122 @@ export default function OpsAnalyticsPanel({ prediction, report, clusterLocked, b
             <Network className="h-4 w-4 text-sky-600" />
             {t.pm.ops.graphTitle}
           </h3>
-          <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 h-auto w-full" role="img" aria-label={t.pm.ops.graphTitle}>
-            <defs>
-              <marker id="tp-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M0 0 10 5 0 10Z" fill="#94A3B8" />
-              </marker>
-            </defs>
-            {victims.map((victim) => (
-              <line
-                key={`e-${victim.senderAccount}`}
-                x1={victim.x + 10}
-                y1={victim.y}
-                x2={hub.x - 30}
-                y2={hub.y}
-                stroke={hubBlocked ? "#F43F5E" : "#F59E0B"}
-                strokeOpacity={0.75}
-                strokeWidth={1 + (victim.amount / maxAmount) * 4}
-                strokeDasharray={hubBlocked ? "5 4" : undefined}
-                markerEnd="url(#tp-arrow)"
-              />
-            ))}
-            {mules.map((mule) => (
-              <line
-                key={`m-${mule.account}`}
-                x1={hub.x + 30}
-                y1={hub.y}
-                x2={mule.x - 12}
-                y2={mule.y}
-                stroke={mule.blocked ? "#F43F5E" : "#38BDF8"}
-                strokeOpacity={0.8}
-                strokeWidth={2}
-                strokeDasharray={mule.blocked ? "5 4" : undefined}
-                markerEnd="url(#tp-arrow)"
-              />
-            ))}
-            {victims.map((victim) => (
-              <g key={`v-${victim.senderAccount}`}>
-                <circle cx={victim.x} cy={victim.y} r={10} fill="#0F172A" stroke="#94A3B8" strokeWidth={1.5} />
-                <text x={victim.x - 16} y={victim.y + 4} textAnchor="end" fontSize={11} fill="#94A3B8" className="tp-mono-svg">
-                  {maskRecipientForDisplay(victim.senderAccount)}
+          {/* Nền tối riêng cho đồ thị → nhãn luôn rõ ở cả giao diện Obsidian lẫn Daylight. */}
+          <div className="mt-3 overflow-hidden rounded-2xl p-2" style={{ backgroundColor: "#0B1222" }}>
+            <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full" role="img" aria-label={t.pm.ops.graphTitle}>
+              <defs>
+                <marker id="tp-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M0 0 10 5 0 10Z" fill="#94A3B8" />
+                </marker>
+              </defs>
+              {victims.map((victim) => (
+                <line
+                  key={`e-${victim.senderAccount}`}
+                  x1={victim.x + 10}
+                  y1={victim.y}
+                  x2={hub.x - hub.r - 2}
+                  y2={hub.y}
+                  stroke={hubTone}
+                  strokeOpacity={0.75}
+                  strokeWidth={1 + (victim.amount / maxAmount) * (compact ? 3 : 4)}
+                  strokeDasharray={hubBlocked ? "5 4" : undefined}
+                  markerEnd="url(#tp-arrow)"
+                />
+              ))}
+              {mules.map((mule) => (
+                <line
+                  key={`m-${mule.account}`}
+                  x1={compact ? hub.x : hub.x + hub.r + 2}
+                  y1={compact ? hub.y + hub.r + 2 : hub.y}
+                  x2={compact ? mule.x : mule.x - 12}
+                  y2={compact ? mule.y - 14 : mule.y}
+                  stroke={mule.blocked ? "#F43F5E" : "#38BDF8"}
+                  strokeOpacity={0.8}
+                  strokeWidth={2}
+                  strokeDasharray={mule.blocked ? "5 4" : undefined}
+                  markerEnd="url(#tp-arrow)"
+                />
+              ))}
+              {victims.map((victim) => (
+                <g key={`v-${victim.senderAccount}`}>
+                  <circle cx={victim.x} cy={victim.y} r={compact ? 8 : 10} fill="#0F172A" stroke="#94A3B8" strokeWidth={1.5} />
+                  <text
+                    x={victim.x - (compact ? 14 : 16)}
+                    y={victim.y + (compact ? -1 : 4)}
+                    textAnchor="end"
+                    fontSize={labelSize}
+                    fill="#CBD5E1"
+                    className="tp-mono-svg"
+                  >
+                    {maskRecipientForDisplay(victim.senderAccount)}
+                  </text>
+                  <text
+                    x={victim.x - (compact ? 14 : 16)}
+                    y={victim.y + (compact ? 13 : 17)}
+                    textAnchor="end"
+                    fontSize={amountSize}
+                    fill="#94A3B8"
+                    className="tp-num"
+                  >
+                    {money(victim.amount)}
+                  </text>
+                </g>
+              ))}
+              <circle cx={hub.x} cy={hub.y} r={hub.r} fill={hubBlocked ? "#4C0519" : "#451A03"} stroke={hubTone} strokeWidth={2.5} />
+              <text x={hub.x} y={hub.y + 4} textAnchor="middle" fontSize={compact ? 10 : 11} fontWeight={700} fill="#F1F5F9" className="tp-mono-svg">
+                {maskRecipientForDisplay(ANOMALY_HUB_ACCOUNT)}
+              </text>
+              {!compact && (
+                <text x={hub.x} y={hub.y + 46} textAnchor="middle" fontSize={11} fill={hubTone}>
+                  {t.pm.ops.graphHub} · {hubBlocked ? t.pm.ops.graphBlocked : t.pm.ops.graphLive}
                 </text>
-                <text x={victim.x - 16} y={victim.y + 17} textAnchor="end" fontSize={10} fill="#64748B">
-                  {money(victim.amount)}
-                </text>
-              </g>
-            ))}
-            <circle cx={hub.x} cy={hub.y} r={28} fill={hubBlocked ? "#4C0519" : "#451A03"} stroke={hubBlocked ? "#F43F5E" : "#F59E0B"} strokeWidth={2.5} />
-            <text x={hub.x} y={hub.y + 4} textAnchor="middle" fontSize={11} fontWeight={700} fill="#F1F5F9">
-              {maskRecipientForDisplay(ANOMALY_HUB_ACCOUNT)}
-            </text>
-            <text x={hub.x} y={hub.y + 46} textAnchor="middle" fontSize={11} fill={hubBlocked ? "#F43F5E" : "#F59E0B"}>
-              {t.pm.ops.graphHub} · {hubBlocked ? t.pm.ops.graphBlocked : t.pm.ops.graphLive}
-            </text>
-            {mules.map((mule) => (
-              <g key={`n-${mule.account}`}>
-                <rect x={mule.x - 12} y={mule.y - 12} width={24} height={24} rx={6} fill="#0F172A" stroke={mule.blocked ? "#F43F5E" : "#38BDF8"} strokeWidth={1.5} />
-                <text x={mule.x + 18} y={mule.y + 4} fontSize={11} fill={mule.blocked ? "#F43F5E" : "#94A3B8"}>
-                  {maskRecipientForDisplay(mule.account)}
-                </text>
-              </g>
-            ))}
-            <text x={92} y={H - 4} textAnchor="middle" fontSize={10} fill="#64748B">
-              {t.pm.ops.graphVictims}
-            </text>
-            <text x={W - 96} y={H - 4} textAnchor="middle" fontSize={10} fill="#64748B">
-              {t.pm.ops.graphMules}
-            </text>
-          </svg>
+              )}
+              {mules.map((mule) => (
+                <g key={`n-${mule.account}`}>
+                  <rect x={mule.x - 12} y={mule.y - 12} width={24} height={24} rx={6} fill="#0F172A" stroke={mule.blocked ? "#F43F5E" : "#38BDF8"} strokeWidth={1.5} />
+                  <text
+                    x={compact ? mule.x : mule.x + 18}
+                    y={compact ? mule.y + 30 : mule.y + 4}
+                    textAnchor={compact ? "middle" : "start"}
+                    fontSize={labelSize}
+                    fill={mule.blocked ? "#FB7185" : "#CBD5E1"}
+                    className="tp-mono-svg"
+                  >
+                    {maskRecipientForDisplay(mule.account)}
+                  </text>
+                </g>
+              ))}
+              {compact ? (
+                <>
+                  <text x={4} y={11} fontSize={10.5} fontWeight={600} fill="#94A3B8">
+                    {t.pm.ops.graphVictims}
+                  </text>
+                  <text x={W / 2} y={H - 4} textAnchor="middle" fontSize={10.5} fontWeight={600} fill="#94A3B8">
+                    {t.pm.ops.graphMules}
+                  </text>
+                </>
+              ) : (
+                <>
+                  <text x={victims[0]?.x ?? 124} y={H - 4} textAnchor="middle" fontSize={10} fill="#94A3B8">
+                    {t.pm.ops.graphVictims}
+                  </text>
+                  <text x={W - 104} y={H - 4} textAnchor="middle" fontSize={10} fill="#94A3B8">
+                    {t.pm.ops.graphMules}
+                  </text>
+                </>
+              )}
+            </svg>
+          </div>
+          {compact && (
+            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600">
+              <span aria-hidden="true" className="inline-block h-3 w-3 rounded-full border-2" style={{ borderColor: hubTone }} />
+              <span className="font-semibold">{t.pm.ops.graphHub}</span>
+              <span className="tp-code">{maskRecipientForDisplay(ANOMALY_HUB_ACCOUNT)}</span>
+              <span className="font-semibold" style={{ color: hubTone }}>
+                · {hubBlocked ? t.pm.ops.graphBlocked : t.pm.ops.graphLive}
+              </span>
+            </p>
+          )}
         </div>
       </div>
 
@@ -253,7 +351,7 @@ export default function OpsAnalyticsPanel({ prediction, report, clusterLocked, b
                     </span>
                     <span className="tp-num text-slate-500">{formatDateTime(entry.timestamp, lang)}</span>
                   </div>
-                  <p className="mt-1 font-mono text-[11px] break-all text-slate-500">
+                  <p className="tp-code mt-1 text-[11px] break-all text-slate-500">
                     prev {entry.prevHash.slice(0, 16)}… → hash {entry.hash.slice(0, 16)}…
                   </p>
                 </li>

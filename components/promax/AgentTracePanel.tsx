@@ -107,18 +107,18 @@ export default function AgentTracePanel({ report }: AgentTracePanelProps) {
                 </span>
               </div>
               <dl className="mt-2 space-y-1.5 text-xs leading-relaxed">
-                <div className="flex gap-2">
-                  <dt className="w-24 shrink-0 font-semibold text-slate-500">{t.pm.thought}</dt>
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                  <dt className="shrink-0 text-[11px] font-semibold tracking-wide text-slate-500 uppercase sm:w-24 sm:text-xs sm:tracking-normal sm:normal-case">{t.pm.thought}</dt>
                   <dd className="min-w-0 text-slate-700">{text.thought}</dd>
                 </div>
-                <div className="flex gap-2">
-                  <dt className="w-24 shrink-0 font-semibold text-slate-500">{t.pm.tool}</dt>
-                  <dd className="min-w-0 font-mono text-[11px] break-all text-sky-700">
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                  <dt className="shrink-0 text-[11px] font-semibold tracking-wide text-slate-500 uppercase sm:w-24 sm:text-xs sm:tracking-normal sm:normal-case">{t.pm.tool}</dt>
+                  <dd className="tp-code min-w-0 text-[11px] break-all text-sky-700">
                     {text.tool} · {step.durationMs.toFixed(2)} ms
                   </dd>
                 </div>
-                <div className="flex gap-2">
-                  <dt className="w-24 shrink-0 font-semibold text-slate-500">{t.pm.observation}</dt>
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+                  <dt className="shrink-0 text-[11px] font-semibold tracking-wide text-slate-500 uppercase sm:w-24 sm:text-xs sm:tracking-normal sm:normal-case">{t.pm.observation}</dt>
                   <dd className="min-w-0">
                     <ul className="space-y-1">
                       {step.findings.map((finding, i) => (

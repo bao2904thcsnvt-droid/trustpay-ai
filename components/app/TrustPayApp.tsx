@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Gauge } from "lucide-react";
+import { Gauge, MessageSquareWarning, PhoneCall, Repeat, ScanLine, ShoppingBag } from "lucide-react";
 import type {
   AwsPipelineTrace,
   BudgetReallocationPlan,
@@ -141,8 +141,11 @@ import { isStandaloneDisplay, shouldSkipHero, type HeroTarget } from "@/lib/cine
 import { useMediaQuery, usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
 // Vòng 6 — Không gian Ứng dụng Di động: Tab Bar đáy, Chuyển/Rút liên ngân hàng, Liên kết ngân hàng.
 import MobileTabBar, { type MobileTab } from "@/components/mobile/MobileTabBar";
-import InterbankPanel from "@/components/mobile/InterbankPanel";
+import InterbankPanel, { type InterbankTab } from "@/components/mobile/InterbankPanel";
 import BankLinkingPanel from "@/components/mobile/BankLinkingPanel";
+// Vòng 8 — Làm lại giao diện điện thoại: thanh ứng dụng gọn + menu bottom sheet, Trang chủ kiểu app ngân hàng.
+import MobileAppBar from "@/components/mobile/MobileAppBar";
+import MobileHome, { type HomeActionId } from "@/components/mobile/MobileHome";
 
 // Vòng 7 — ProMax: AI Agent 4 bước, Edge ML hành vi, CV Forensics, XAI, chuỗi Audit SHA-256.
 import { BehaviorTracker, predictCoercion, type CoercionPrediction } from "@/lib/behavioral-ml";
@@ -156,6 +159,9 @@ import OpsAnalyticsPanel from "@/components/OpsAnalyticsPanel";
 
 /** Điện thoại ≤768px hoặc PWA đã cài (standalone) → Không gian Ứng dụng Di động. */
 const MOBILE_SHELL_QUERY = "(max-width: 768px), (display-mode: standalone)";
+
+/** Nội dung chuyển khoản của lệnh "Rút tiền về ngân hàng liên kết" (nhận diện phiên rút tiền). */
+const WITHDRAW_MEMO = "Rut tien ve ngan hang";
 
 type ShieldTool = "check" | "call" | "shop" | "subs";
 import { useResolvedTheme } from "@/components/theme/ThemeController";
@@ -371,6 +377,8 @@ export default function TrustPayApp() {
   const mobileShell = useMediaQuery(MOBILE_SHELL_QUERY);
   const [mobileTab, setMobileTab] = useState<MobileTab>("home");
   const [shieldTool, setShieldTool] = useState<ShieldTool>("check");
+  // Vòng 8: tab Chuyển tiền / Rút tiền giữ ở đây để Trang chủ mở thẳng đúng tab.
+  const [xferTab, setXferTab] = useState<InterbankTab>("transfer");
 
   // iframe nhúng SDK (`?embed=momo`), lối tắt PWA (`?action=…`) và PWA đã cài (standalone) đi
   // thẳng vào Không gian làm việc.
@@ -1403,6 +1411,7 @@ export default function TrustPayApp() {
   const syncMobileTab = (agent: AgentTab) => {
     if (agent === "transfer") {
       setMobileTab("transfer");
+      setXferTab("transfer");
     } else if (agent === "qr") {
       setMobileTab("scan");
     } else {
@@ -1428,6 +1437,49 @@ export default function TrustPayApp() {
     if (tab === "scan") setActiveAgent("qr");
     else if (tab === "transfer") setActiveAgent("transfer");
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  /** Chuông cảnh báo / menu → Ops Center (Fintech Workspace) trên điện thoại. */
+  const openOpsCenter = () => {
+    setShowOnboarding(false);
+    setActiveTab("fintech-ops");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  /** Lưới thao tác nhanh trên Trang chủ điện thoại → đúng tab / công cụ. */
+  const handleHomeAction = (action: HomeActionId) => {
+    switch (action) {
+      case "transfer":
+        setXferTab("transfer");
+        selectMobileTab("transfer");
+        return;
+      case "withdraw":
+        setXferTab("withdraw");
+        selectMobileTab("transfer");
+        return;
+      case "scan":
+        selectMobileTab("scan");
+        return;
+      case "banks":
+        selectMobileTab("banks");
+        return;
+      case "split":
+        selectMobileTab("banks");
+        focusArea("tp-split-bill");
+        return;
+      case "bill":
+        selectMobileTab("shield");
+        setShieldTool("check");
+        focusArea("tp-cv-forensics");
+        return;
+      case "check":
+        selectMobileTab("shield");
+        setShieldTool("check");
+        return;
+      case "ops":
+        openOpsCenter();
+        return;
+    }
   };
 
   const handleCopilotPrefill = (commandText: string) => {
@@ -1519,6 +1571,7 @@ export default function TrustPayApp() {
     setShowOnboarding(false);
     setActiveTab("user-wallet");
     setActiveAgent("transfer");
+    setXferTab("transfer");
     if (hubStore.getSnapshot().uiMode === "easy") {
       setEasyPanel("transfer");
     }
@@ -1563,6 +1616,7 @@ export default function TrustPayApp() {
     setActiveTab("user-wallet");
     setActiveAgent("transfer");
     setMobileTab("transfer");
+    setXferTab("transfer");
     focusArea("tp-transfer-panel");
     showToast({ type: "info", title: t.toastR4.payeeFilled(payee.label), description: t.toastR4.payeeFilledDesc });
   };
@@ -1652,6 +1706,7 @@ export default function TrustPayApp() {
     } else if (target === "start") {
       // CTA "Bắt đầu chuyển & quét QR": vào biểu mẫu Chuyển/Rút liên ngân hàng.
       setMobileTab("transfer");
+      setXferTab("transfer");
       if (easy) {
         setEasyPanel("transfer");
         scrollTop();
@@ -1686,13 +1741,14 @@ export default function TrustPayApp() {
       text: buildTransferCommand(amount, institution.shortName, "rút tiền về ngân hàng liên kết"),
       scenarioId: null,
       autoSubmit: true,
-      memo: "Rut tien ve ngan hang",
+      memo: WITHDRAW_MEMO,
     }));
     pendingHandoffFocusRef.current = true;
     setActiveTab("user-wallet");
     setActiveAgent("transfer");
     setMobileTab("transfer");
-    focusArea("tp-transfer-panel");
+    setXferTab("withdraw");
+    focusArea("tp-ai-result");
     showToast({
       type: "info",
       title: t.mob.xfer.toastTitle(institution.shortName),
@@ -2061,44 +2117,54 @@ export default function TrustPayApp() {
     </section>
   );
 
-  const shieldTools: { id: ShieldTool; label: string }[] = [
-    { id: "check", label: t.mob.shield.check },
-    { id: "call", label: t.mob.shield.call },
-    { id: "shop", label: t.mob.shield.shop },
-    { id: "subs", label: t.mob.shield.subs },
+  const shieldTools: { id: ShieldTool; label: string; Icon: typeof ScanLine }[] = [
+    { id: "check", label: t.mob.shield.check, Icon: MessageSquareWarning },
+    { id: "call", label: t.mob.shield.call, Icon: PhoneCall },
+    { id: "shop", label: t.mob.shield.shop, Icon: ShoppingBag },
+    { id: "subs", label: t.mob.shield.subs, Icon: Repeat },
   ];
+
+  // Vòng 8 — tên màn hình trên thanh ứng dụng điện thoại (Ops Center có nút quay lại Ví).
+  const opsOnMobile = !easyMode && !embedMode && activeTab === "fintech-ops";
+  const withdrawSession = transfer?.memo === WITHDRAW_MEMO;
+  const mobileTitle = easyMode
+    ? t.app.screen.easy
+    : opsOnMobile
+      ? t.app.screen.ops
+      : embedMode
+        ? activeAgent === "qr"
+          ? t.app.screen.scan
+          : t.app.screen.transfer
+        : t.app.screen[mobileTab];
 
   // Không gian Ứng dụng Di động — nội dung từng tab của thanh App Bar đáy.
   const mobileContent = (
     <>
       <div className={activeTab === "user-wallet" ? "flex min-w-0 flex-col gap-5" : "hidden"}>
         {mobileTab === "home" && (
-          <>
+          <MobileHome
+            balance={wallet.balance}
+            balanceHidden={hub.balanceHidden}
+            onToggleBalance={handleToggleBalance}
+            sourceLabel={sourceLabel}
+            dailyOutflow={dailyOutflow}
+            budgets={wallet.budgets}
+            pendingAlertsCount={pendingAlertsCount}
+            lastVerdict={investigation ? { score: investigation.finalScore, level: investigation.finalLevel } : null}
+            onAction={handleHomeAction}
+          >
             <WalletSidebar
+              sections={["guardian"]}
               walletBalance={wallet.balance}
               budgets={wallet.budgets}
               blacklist={wallet.blacklist}
               guardian={wallet.guardian}
               dailyOutflow={dailyOutflow}
               onSaveGuardian={handleSaveGuardian}
-              onAddBlacklistEntry={handleAddBlacklistEntry}
               guardianHighlighted={highlightTarget === "tp-guardian-card"}
-              balanceHidden={hub.balanceHidden}
-              onToggleBalance={handleToggleBalance}
             />
-            <section
-              aria-label={t.mob.home.alertsTitle}
-              className={`rounded-3xl border bg-white p-4 shadow-xs ${
-                pendingAlertsCount > 0 ? "border-rose-300" : "border-slate-200"
-              }`}
-            >
-              <h2 className="text-sm font-bold text-slate-900">{t.mob.home.alertsTitle}</h2>
-              <p className={`mt-1 text-xs ${pendingAlertsCount > 0 ? "font-semibold text-rose-600" : "text-slate-500"}`}>
-                {t.mob.home.alerts(pendingAlertsCount)}
-              </p>
-            </section>
             <TransactionHistory transactions={wallet.transactions} />
-          </>
+          </MobileHome>
         )}
 
         {mobileTab === "transfer" && (
@@ -2107,43 +2173,49 @@ export default function TrustPayApp() {
             defaultSourceId={hub.defaultSourceId}
             balance={wallet.balance}
             balanceHidden={hub.balanceHidden}
+            tab={xferTab}
+            onTabChange={setXferTab}
             onWithdraw={handleWithdraw}
-            transferExtras={
-              <>
-                <PaymentCopilot
-                  budgets={wallet.budgets}
-                  subscriptions={wallet.subscriptions}
-                  onPrefillTransfer={handleCopilotPrefill}
-                  onOpenSubscriptions={() => openAgent("subscriptions", "tp-agent-subscriptions")}
-                  onOpenQr={() => selectMobileTab("scan")}
-                  onOpenCallShield={() => openAgent("transfer", "tp-call-shield")}
-                  highlighted={highlightTarget === "tp-copilot"}
-                />
-                <TrustedPayees
-                  payees={hub.trustedPayees}
-                  onPick={handlePickPayee}
-                  highlighted={highlightTarget === "tp-trusted-payees"}
-                />
-              </>
+            beforeForm={
+              <TrustedPayees
+                payees={hub.trustedPayees}
+                onPick={handlePickPayee}
+                highlighted={highlightTarget === "tp-trusted-payees"}
+              />
+            }
+            afterForm={
+              <PaymentCopilot
+                budgets={wallet.budgets}
+                subscriptions={wallet.subscriptions}
+                onPrefillTransfer={handleCopilotPrefill}
+                onOpenSubscriptions={() => openAgent("subscriptions", "tp-agent-subscriptions")}
+                onOpenQr={() => selectMobileTab("scan")}
+                onOpenCallShield={() => openAgent("transfer", "tp-call-shield")}
+                highlighted={highlightTarget === "tp-copilot"}
+              />
             }
           >
-            {transferPanel}
-            {resultPanel}
-            {handoffPanel}
+            {/* Tab Rút tiền: biểu mẫu lệnh AI vẫn gắn (tự phân tích lệnh rút) nhưng ẩn khỏi màn hình;
+                chỉ hiện kết quả + mã VietQR của chính lệnh rút. */}
+            <div className={xferTab === "withdraw" ? "hidden" : "contents"}>{transferPanel}</div>
+            {(xferTab === "transfer" || isAnalyzing || withdrawSession) && (
+              <div id="tp-ai-result" className="flex min-w-0 scroll-mt-24 flex-col gap-4">
+                {resultPanel}
+              </div>
+            )}
+            {(xferTab === "transfer" || withdrawSession) && handoffPanel}
           </InterbankPanel>
         )}
 
         {mobileTab === "scan" && (
           <>
-            <section className="rounded-3xl border border-slate-200 bg-white p-4 text-center shadow-xs">
-              <h2 className="text-base font-bold text-slate-900">{t.mob.scan.title}</h2>
-              <p className="mt-1 text-xs leading-relaxed text-slate-500">{t.mob.scan.hint}</p>
-              <button
-                type="button"
-                onClick={() => setCameraRequest((prev) => prev + 1)}
-                className="mt-3 inline-flex min-h-12 w-full cursor-pointer items-center justify-center rounded-full bg-white px-5 text-sm font-bold text-black shadow-[0_0_22px_rgba(255,255,255,0.28)]"
-                style={{ backgroundColor: "#ffffff", color: "#000000" }}
-              >
+            <section className="tp-scan-hero">
+              <span className="tp-scan-hero-icon" aria-hidden="true">
+                <ScanLine className="h-7 w-7" />
+              </span>
+              <h2 className="text-lg font-bold text-slate-900">{t.mob.scan.title}</h2>
+              <p className="mt-1 text-sm leading-relaxed text-slate-500">{t.mob.scan.hint}</p>
+              <button type="button" onClick={() => setCameraRequest((prev) => prev + 1)} className="tp-primary-btn mt-4">
                 {t.mob.scan.open}
               </button>
             </section>
@@ -2177,25 +2249,20 @@ export default function TrustPayApp() {
 
         {mobileTab === "shield" && (
           <>
-            <div
-              role="tablist"
-              aria-label={t.mob.shield.tabsLabel}
-              className="tp-scroll-x flex snap-x gap-1.5 rounded-2xl bg-slate-100 p-1"
-            >
-              {shieldTools.map((tool) => (
+            <div role="tablist" aria-label={t.mob.shield.tabsLabel} className="tp-tool-grid">
+              {shieldTools.map(({ id, label, Icon }) => (
                 <button
-                  key={tool.id}
+                  key={id}
                   type="button"
                   role="tab"
-                  aria-selected={shieldTool === tool.id}
-                  onClick={() => setShieldTool(tool.id)}
-                  className={`min-h-11 shrink-0 cursor-pointer snap-start rounded-xl px-3.5 text-xs font-semibold whitespace-nowrap transition-all ${
-                    shieldTool === tool.id
-                      ? "bg-gradient-to-r from-[#a50064] to-[#d82d8b] text-white shadow-sm"
-                      : "text-slate-600 hover:bg-white/70"
-                  }`}
+                  aria-selected={shieldTool === id}
+                  onClick={() => setShieldTool(id)}
                 >
-                  {tool.label}
+                  <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
+                  <span className="min-w-0 truncate">{label}</span>
+                  {id === "subs" && flaggedSubscriptions > 0 && (
+                    <span className="tp-tool-badge tp-num">{flaggedSubscriptions}</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -2204,6 +2271,13 @@ export default function TrustPayApp() {
               <>
                 <AiCheckHelper budgets={wallet.budgets} blacklist={wallet.blacklist} />
                 <CvForensicsPanel />
+                <WalletSidebar
+                  sections={["blacklist"]}
+                  walletBalance={wallet.balance}
+                  budgets={wallet.budgets}
+                  blacklist={wallet.blacklist}
+                  onAddBlacklistEntry={handleAddBlacklistEntry}
+                />
               </>
             )}
             {shieldTool === "call" && (
@@ -2263,7 +2337,8 @@ export default function TrustPayApp() {
       {!embedMode && (
         <CinematicBackdrop
           mode={workspaceHidden ? "hero" : "workspace"}
-          playing={heroShown || resolvedTheme === "dark"}
+          // Điện thoại: video chỉ chạy ở màn hình giới thiệu (tiết kiệm pin khi dùng Ví).
+          playing={heroShown || (!mobileShell && resolvedTheme === "dark")}
         />
       )}
 
@@ -2273,26 +2348,56 @@ export default function TrustPayApp() {
         data-hidden={workspaceHidden ? "true" : "false"}
         inert={workspaceHidden}
       >
-      <AppHeader
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        pendingAlertsCount={pendingAlertsCount}
-        onOpenOnboarding={() => setShowOnboarding(true)}
-        onReset={handleReset}
-        onOpenGuide={() => handleOpenGuide(0)}
-        guideSeen={prefs.guideSeen}
-        onOpenFinOps={() => setFinopsOpen(true)}
-        embedMode={embedMode}
-        onToggleEmbed={handleToggleEmbed}
-        uiMode={embedMode ? "pro" : hub.uiMode}
-        onModeChange={embedMode ? undefined : handleModeChange}
-        onAppInstalled={() =>
-          showToast({ type: "success", title: t.toastR4.installed, description: t.toastR4.installedDesc })
-        }
-        onLogoClick={embedMode ? undefined : handleReturnToHero}
-      />
+      {mobileShell ? (
+        /* Vòng 8 — thanh ứng dụng gọn cho điện thoại; tùy chọn còn lại nằm trong menu bottom sheet. */
+        <MobileAppBar
+          title={mobileTitle}
+          pendingAlertsCount={pendingAlertsCount}
+          uiMode={embedMode ? "pro" : hub.uiMode}
+          onModeChange={embedMode ? undefined : handleModeChange}
+          onLogoClick={embedMode ? undefined : handleReturnToHero}
+          onBack={opsOnMobile ? () => setActiveTab("user-wallet") : undefined}
+          backLabel={t.app.backHome}
+          onOpenOps={openOpsCenter}
+          onOpenGuide={() => handleOpenGuide(0)}
+          guideSeen={prefs.guideSeen}
+          onOpenFinOps={() => setFinopsOpen(true)}
+          embedMode={embedMode}
+          onToggleEmbed={handleToggleEmbed}
+          onOpenOnboarding={() => setShowOnboarding(true)}
+          onReset={handleReset}
+          onAppInstalled={() =>
+            showToast({ type: "success", title: t.toastR4.installed, description: t.toastR4.installedDesc })
+          }
+        />
+      ) : (
+        <AppHeader
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          pendingAlertsCount={pendingAlertsCount}
+          onOpenOnboarding={() => setShowOnboarding(true)}
+          onReset={handleReset}
+          onOpenGuide={() => handleOpenGuide(0)}
+          guideSeen={prefs.guideSeen}
+          onOpenFinOps={() => setFinopsOpen(true)}
+          embedMode={embedMode}
+          onToggleEmbed={handleToggleEmbed}
+          uiMode={embedMode ? "pro" : hub.uiMode}
+          onModeChange={embedMode ? undefined : handleModeChange}
+          onAppInstalled={() =>
+            showToast({ type: "success", title: t.toastR4.installed, description: t.toastR4.installedDesc })
+          }
+          onLogoClick={embedMode ? undefined : handleReturnToHero}
+        />
+      )}
 
-      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 pb-28 sm:px-6 lg:px-8">
+      <main
+        className={
+          mobileShell
+            ? "tp-mmain mx-auto flex w-full max-w-3xl flex-1 flex-col px-4"
+            : "mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 pb-28 sm:px-6 lg:px-8"
+        }
+      >
         {easyMode ? (
           /* Vòng 4 — ✨ Chế độ Đơn giản (Easy Mode): chữ to, 3 nút hành động khổng lồ */
           <EasyHome

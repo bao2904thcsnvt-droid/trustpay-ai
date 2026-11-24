@@ -466,12 +466,12 @@ export default function AiShieldResultPanel({
                 <p className="mt-0.5 text-xs text-sky-800">{t.result.frozenDesc(guardianName)}</p>
               </div>
             </div>
-            <div className="mt-3 flex flex-wrap items-center justify-end gap-2.5">
+            <div className="mt-3 flex flex-col-reverse gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
               {onCancelTransaction && (
                 <button
                   type="button"
                   onClick={onCancelTransaction}
-                  className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 sm:text-sm"
+                  className="inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 sm:min-h-0 sm:w-auto"
                 >
                   <XCircle className="h-4 w-4 text-slate-400" />
                   <span>{t.result.cancel}</span>
@@ -481,7 +481,7 @@ export default function AiShieldResultPanel({
                 <button
                   type="button"
                   onClick={onOpenCoolingOff}
-                  className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-700 to-indigo-700 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-sky-700/20 transition-all hover:brightness-110 sm:text-sm"
+                  className="inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-700 to-indigo-700 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-sky-700/20 transition-all hover:brightness-110 sm:min-h-0 sm:w-auto"
                 >
                   <HeartHandshake className="h-4 w-4 shrink-0" />
                   <span>{t.result.reopenCooling}</span>
@@ -498,12 +498,13 @@ export default function AiShieldResultPanel({
               </span>
             )}
 
-            <div className="flex flex-1 flex-wrap items-center justify-end gap-2.5">
+            {/* Điện thoại: nút xác nhận rộng toàn màn hình ở trên, nút hủy bên dưới (không ép chữ 3 dòng). */}
+            <div className="flex flex-1 flex-col-reverse gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
               {onCancelTransaction && (
                 <button
                   type="button"
                   onClick={onCancelTransaction}
-                  className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 sm:text-sm"
+                  className="inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 sm:min-h-0 sm:w-auto"
                 >
                   <XCircle className="h-4 w-4 text-slate-400" />
                   <span>{t.result.cancel}</span>
@@ -514,7 +515,7 @@ export default function AiShieldResultPanel({
                 <button
                   type="button"
                   onClick={() => onRequestBiometric(analysis)}
-                  className="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 px-5 py-3 text-xs font-bold text-white shadow-md shadow-rose-600/25 transition-all hover:brightness-110 active:scale-[0.99] sm:flex-initial sm:text-sm"
+                  className="inline-flex min-h-[52px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 px-5 py-3 text-sm font-bold text-white shadow-md shadow-rose-600/25 transition-all hover:brightness-110 active:scale-[0.99] sm:min-h-0 sm:w-auto sm:flex-initial"
                 >
                   <ScanFace className="h-4 w-4 shrink-0" />
                   <span>{t.result.biometricPolicy}</span>
@@ -524,7 +525,7 @@ export default function AiShieldResultPanel({
                   type="button"
                   disabled={isInsufficientBalance || isInvalidAmount}
                   onClick={() => onConfirmTransfer(analysis)}
-                  className={`inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-2xl px-5 py-3 text-xs font-bold text-white shadow-md transition-all hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 sm:flex-initial sm:text-sm ${
+                  className={`inline-flex min-h-[52px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold text-white shadow-md transition-all hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 sm:w-auto sm:flex-initial ${
                     liveExceeded
                       ? "bg-gradient-to-r from-amber-500 to-orange-600 shadow-amber-500/25"
                       : "bg-gradient-to-r from-[#a50064] to-[#d82d8b] shadow-[#a50064]/25"

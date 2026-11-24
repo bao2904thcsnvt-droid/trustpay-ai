@@ -282,7 +282,7 @@ export default function CameraQrScanner({ onDetected, onClose }: CameraQrScanner
                 spellCheck={false}
                 onChange={(event) => setManual(event.target.value)}
                 placeholder="000201…"
-                className="min-w-0 flex-1 rounded-xl border border-white/20 bg-black/30 px-3 py-2 font-mono text-xs text-white placeholder:text-slate-400 focus:border-sky-300 focus:outline-none"
+                className="tp-code min-w-0 flex-1 rounded-xl border border-white/20 bg-black/30 px-3 py-2 text-xs text-white placeholder:text-slate-400 focus:border-sky-300 focus:outline-none"
               />
               <button
                 type="submit"

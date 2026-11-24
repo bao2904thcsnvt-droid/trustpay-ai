@@ -68,25 +68,28 @@ export default function AwsPipelineBar({ trace, className = "" }: AwsPipelineBar
         </span>
       </div>
 
-      <ol className="mt-2.5 flex flex-wrap items-center gap-x-1.5 gap-y-2 text-xs">
+      {/* Điện thoại: mỗi chặng một hàng (độ trễ canh phải) thay vì các viên thuốc bị ép xuống dòng. */}
+      <ol className="mt-2.5 flex flex-col gap-1.5 text-xs sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-1.5 sm:gap-y-2">
         {trace.steps.map((step, index) => {
           const label = stepLabel(step, trace.kind, t);
           const classes = stepClasses(step.status);
           return (
-            <li key={step.id} className="flex items-center gap-1.5">
+            <li key={step.id} className="flex min-w-0 items-center gap-1.5">
               {index > 0 && (
-                <span aria-hidden="true" className="font-bold text-slate-500">
+                <span aria-hidden="true" className="hidden font-bold text-slate-500 sm:inline">
                   →
                 </span>
               )}
               <span
                 title={t.pipeline.statusTitle[step.status]}
-                className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 ${classes.pill}`}
+                className={`flex w-full min-w-0 items-center gap-1.5 rounded-xl border px-2.5 py-1.5 sm:inline-flex sm:w-auto ${classes.pill}`}
               >
                 <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${classes.dot}`} />
-                <span className="font-semibold text-white">{label.service}</span>
-                <span className="text-slate-300">{label.role}</span>
-                <span className="font-mono text-[10px] text-slate-400">{formatLatency(step.latencyMs)}</span>
+                <span className="shrink-0 font-semibold text-white">{label.service}</span>
+                <span className="min-w-0 truncate text-slate-300 sm:overflow-visible sm:whitespace-normal">{label.role}</span>
+                <span className="ml-auto shrink-0 pl-1 font-mono text-[10px] text-slate-400 sm:ml-0 sm:pl-0">
+                  {formatLatency(step.latencyMs)}
+                </span>
               </span>
             </li>
           );

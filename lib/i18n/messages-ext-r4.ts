@@ -32,7 +32,7 @@ export const viExtR4 = {
     checkDesc: "Dán tin nhắn, link hoặc ảnh nghi ngờ",
     back: "← Về màn hình chính",
     normalTransfer: "Hoặc chuyển khoản thường",
-    proHint: "Cần bảng kỹ thuật, Ops hay AWS FinOps? Bấm “⚡ Chế độ Đầy đủ (Pro Mode)” trên thanh điều hướng.",
+    proHint: "Cần bảng kỹ thuật, Ops hay AWS FinOps? Bấm “⚡ Chế độ Đầy đủ (Pro Mode)” trên thanh điều hướng (điện thoại: nút menu ☰ ở góc trên).",
   },
   pwa: {
     install: "📲 Cài App lên Điện thoại",
@@ -311,7 +311,7 @@ export const enExtR4: ExtR4Messages = {
     checkDesc: "Paste a suspicious message, link or picture",
     back: "← Back to home",
     normalTransfer: "Or make a regular transfer",
-    proHint: "Need the technical panels, Ops or AWS FinOps? Tap “⚡ Pro Mode” in the navigation bar.",
+    proHint: "Need the technical panels, Ops or AWS FinOps? Tap “⚡ Pro Mode” in the navigation bar (on phones: the ☰ menu at the top).",
   },
   pwa: {
     install: "📲 Install app on your phone",

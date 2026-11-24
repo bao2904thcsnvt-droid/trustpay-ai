@@ -412,7 +412,8 @@ export default function TransactionInputPanel({
             <ClipboardPaste className="h-4 w-4 shrink-0" />
             <span className="text-center">{t.paste.button}</span>
           </button>
-          <p className="mt-1.5 px-1 text-center text-[11px] text-slate-400">{t.paste.ctrlvHint}</p>
+          {/* Mẹo phím tắt chỉ có ý nghĩa với bàn phím vật lý → ẩn trên điện thoại. */}
+          <p className="mt-1.5 hidden px-1 text-center text-[11px] text-slate-400 sm:block">{t.paste.ctrlvHint}</p>
 
           {pasteOpen && (
             <div id="tp-paste-panel" className="mt-3 space-y-2.5 rounded-2xl border border-pink-200 bg-white p-3.5">
@@ -526,7 +527,8 @@ export default function TransactionInputPanel({
           <span className="text-[11px] text-slate-400">{t.transfer.scenariosHint}</span>
         </div>
 
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        {/* Điện thoại: vuốt ngang từng thẻ kịch bản (không đẩy ô nhập lệnh xuống quá sâu). */}
+        <div className="tp-scroll-x -mx-1 flex snap-x snap-mandatory gap-2.5 px-1 pt-1 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 sm:pt-0 sm:pb-0">
           {DEMO_SCENARIOS.map((scenario) => {
             const isSelected = activeScenarioId === scenario.id;
             const style = getScenarioStyle(scenario, isSelected);
@@ -544,7 +546,7 @@ export default function TransactionInputPanel({
                 type="button"
                 disabled={isAnalyzing}
                 onClick={() => handleSelectScenario(scenario)}
-                className={`group flex cursor-pointer flex-col items-start rounded-2xl border p-3 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60 ${style.card} ${
+                className={`group flex w-[80%] shrink-0 cursor-pointer snap-start flex-col items-start rounded-2xl border p-3 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${style.card} ${
                   isHighlighted ? "tp-highlight" : ""
                 }`}
               >
@@ -673,7 +675,7 @@ export default function TransactionInputPanel({
         )}
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[11px] text-slate-400">
+          <p className="hidden text-[11px] text-slate-400 sm:block">
             {t.transfer.tipPrefix}{" "}
             <kbd className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600">
               Ctrl

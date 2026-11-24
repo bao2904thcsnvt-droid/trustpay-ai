@@ -37,8 +37,8 @@ export default function ModeToggle({ mode, onChange }: ModeToggleProps) {
               : "text-amber-800 hover:bg-amber-100"
           }`}
         >
-          <span className="hidden xl:inline">{option.full}</span>
-          <span className="xl:hidden">{option.short}</span>
+          <span className="hidden 2xl:inline">{option.full}</span>
+          <span className="2xl:hidden">{option.short}</span>
         </button>
       ))}
     </div>

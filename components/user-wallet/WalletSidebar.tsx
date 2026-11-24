@@ -41,7 +41,16 @@ export interface WalletSidebarProps {
   /** Vòng 4: "👁️ Ẩn/Hiện số dư" — ẩn thì hiển thị `•••••••• đ`. */
   balanceHidden?: boolean;
   onToggleBalance?: () => void;
+  /**
+   * Vòng 8: chỉ hiện một số khối (Trang chủ điện thoại dùng `["guardian"]`, công cụ Lá chắn dùng
+   * `["blacklist"]`). Mặc định hiện đủ 4 khối như giao diện laptop.
+   */
+  sections?: readonly WalletSidebarSection[];
 }
+
+export type WalletSidebarSection = "balance" | "guardian" | "budgets" | "blacklist";
+
+const ALL_SECTIONS: readonly WalletSidebarSection[] = ["balance", "guardian", "budgets", "blacklist"];
 
 const BLACKLIST_PREVIEW = 6;
 
@@ -109,8 +118,10 @@ export default function WalletSidebar({
   guardianHighlighted = false,
   balanceHidden = false,
   onToggleBalance,
+  sections = ALL_SECTIONS,
 }: WalletSidebarProps) {
   const { t, money, category } = useI18n();
+  const show = (section: WalletSidebarSection) => sections.includes(section);
   const [reportValue, setReportValue] = useState("");
   const [reportError, setReportError] = useState<string | null>(null);
   const [showAllBlacklist, setShowAllBlacklist] = useState(false);
@@ -151,6 +162,7 @@ export default function WalletSidebar({
   return (
     <aside className="flex flex-col gap-5">
       {/* 1. Thẻ Số dư Ví Khả Dụng */}
+      {show("balance") && (
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#a50064] via-[#c21878] to-[#d82d8b] p-6 text-white shadow-lg shadow-[#a50064]/20">
         <div
           aria-hidden="true"
@@ -230,13 +242,15 @@ export default function WalletSidebar({
           </div>
         </div>
       </div>
+      )}
 
       {/* 2. Người giám hộ tin cậy */}
-      {guardian && onSaveGuardian && (
+      {show("guardian") && guardian && onSaveGuardian && (
         <GuardianProfileCard guardian={guardian} onSave={onSaveGuardian} highlighted={guardianHighlighted} />
       )}
 
       {/* 3. Danh mục ngân sách */}
+      {show("budgets") && (
       <div className="rounded-3xl border border-slate-200/90 bg-white p-5 shadow-xs">
         <div className="mb-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -299,8 +313,10 @@ export default function WalletSidebar({
           })}
         </div>
       </div>
+      )}
 
       {/* 4. Blacklist sống */}
+      {show("blacklist") && (
       <div className="rounded-3xl border border-rose-200/80 bg-white p-5 shadow-xs">
         <div className="mb-3.5 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -337,7 +353,7 @@ export default function WalletSidebar({
                     ) : (
                       <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-rose-600" />
                     )}
-                    <span className="truncate font-mono font-semibold text-rose-900">{item}</span>
+                    <span className={`truncate font-semibold text-rose-900 ${/\d/.test(item) ? "tp-code" : ""}`}>{item}</span>
                   </div>
                   <span className="shrink-0 rounded-md bg-rose-600/10 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-rose-700 uppercase">
                     {isCluster ? t.wallet.clusterTag : t.wallet.blacklistTag}
@@ -399,6 +415,7 @@ export default function WalletSidebar({
           </form>
         )}
       </div>
+      )}
     </aside>
   );
 }

@@ -426,7 +426,7 @@ export default function QrInspector({
           spellCheck={false}
           onChange={(event) => setPayload(event.target.value)}
           placeholder={t.qr.placeholder}
-          className="mt-1.5 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50/60 px-3 py-2.5 font-mono text-[11px] break-all text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:border-[#d82d8b] focus:bg-white focus:ring-4 focus:ring-pink-100 focus:outline-none"
+          className="tp-code mt-1.5 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50/60 px-3 py-2.5 text-[11px] break-all text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:border-[#d82d8b] focus:bg-white focus:ring-4 focus:ring-pink-100 focus:outline-none"
         />
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <button
@@ -584,7 +584,7 @@ export default function QrInspector({
               ].map((item) => (
                 <div key={item.label} className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                   <dt className="text-[10px] font-semibold tracking-wide text-slate-500 uppercase">{item.label}</dt>
-                  <dd className="mt-0.5 font-mono text-xs break-all text-slate-900">{item.value}</dd>
+                  <dd className="tp-code mt-0.5 text-xs break-all text-slate-900">{item.value}</dd>
                 </div>
               ))}
             </dl>
@@ -669,9 +669,9 @@ export default function QrInspector({
                   <tbody className="divide-y divide-slate-100">
                     {tlvRows.map(({ path, field }) => (
                       <tr key={`${path}-${field.offset}`} className="text-slate-700">
-                        <td className="px-3 py-1.5 font-mono font-bold whitespace-nowrap text-[#a50064]">{path}</td>
-                        <td className="px-3 py-1.5 font-mono">{field.length}</td>
-                        <td className="max-w-[260px] px-3 py-1.5 font-mono break-all">
+                        <td className="tp-code px-3 py-1.5 font-bold whitespace-nowrap text-[#a50064]">{path}</td>
+                        <td className="tp-code px-3 py-1.5">{field.length}</td>
+                        <td className="tp-code max-w-[260px] px-3 py-1.5 break-all">
                           {field.children ? "…" : field.value}
                         </td>
                         <td className="px-3 py-1.5">{t.qr.tagNames[path] ?? t.qr.tagNames[field.tag] ?? "—"}</td>

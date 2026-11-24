@@ -163,8 +163,8 @@ export default function CoolingOffModal({
           className="pointer-events-none absolute top-1.5 left-1/2 z-10 h-1 w-10 -translate-x-1/2 rounded-full bg-white/50 sm:hidden"
         />
         {/* Header */}
-        <div className="flex flex-wrap items-start justify-between gap-3 bg-gradient-to-r from-sky-900 via-indigo-900 to-slate-900 px-5 py-4 text-white sm:px-6">
-          <div className="min-w-0">
+        <div className="flex items-start justify-between gap-3 bg-gradient-to-r from-sky-900 via-indigo-900 to-slate-900 px-5 py-4 text-white sm:px-6">
+          <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1 rounded-full bg-sky-400/20 px-2.5 py-0.5 text-[11px] font-bold text-sky-100 ring-1 ring-sky-300/40">
                 <Lock className="h-3 w-3" />
@@ -185,7 +185,9 @@ export default function CoolingOffModal({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-white/20"
+            aria-label={resolved ? t.common.close : t.cooling.minimize}
+            title={resolved ? t.common.close : t.cooling.minimize}
+            className="inline-flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-white/20"
           >
             <Minimize2 className="h-4 w-4" />
             <span className="hidden sm:inline">{resolved ? t.common.close : t.cooling.minimize}</span>

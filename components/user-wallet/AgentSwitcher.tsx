@@ -36,7 +36,7 @@ export default function AgentSwitcher({ active, onChange, flaggedSubscriptions }
       <div
         role="tablist"
         aria-label={t.agents.title}
-        className="tp-scroll-x flex snap-x snap-mandatory gap-1.5 rounded-2xl bg-slate-100 p-1 sm:grid sm:grid-cols-2 xl:grid-cols-4"
+        className="tp-scroll-x flex snap-x snap-mandatory gap-1.5 rounded-2xl bg-slate-100 p-1 sm:grid sm:grid-cols-2 2xl:grid-cols-4"
       >
         {tabs.map(({ id, label, Icon }) => (
           <button

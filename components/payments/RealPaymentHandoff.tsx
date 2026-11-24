@@ -468,14 +468,15 @@ export default function RealPaymentHandoff({
         <div className="min-w-0 space-y-3">
           <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {[
-              { label: t.handoff.bank, value: `${institution.shortName} (${institution.bin})` },
-              { label: t.handoff.account, value: payee.accountNumber },
-              { label: t.handoff.holder, value: accountName || t.handoff.holderUnknown },
-              { label: t.handoff.amount, value: qrAmount !== null ? money(qrAmount) : "—" },
+              { label: t.handoff.bank, value: `${institution.shortName} (${institution.bin})`, style: "font-semibold" },
+              // Chỉ STK dùng font mã (JetBrains Mono); số tiền dùng Inter tabular như mọi số tiền khác.
+              { label: t.handoff.account, value: payee.accountNumber, style: "tp-code" },
+              { label: t.handoff.holder, value: accountName || t.handoff.holderUnknown, style: "font-semibold" },
+              { label: t.handoff.amount, value: qrAmount !== null ? money(qrAmount) : "—", style: "tp-num font-bold" },
             ].map((item) => (
               <div key={item.label} className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                 <dt className="text-[10px] font-semibold tracking-wide text-slate-500 uppercase">{item.label}</dt>
-                <dd className="mt-0.5 font-mono text-xs break-all text-slate-900">{item.value}</dd>
+                <dd className={`mt-0.5 text-sm break-all text-slate-900 ${item.style}`}>{item.value}</dd>
               </div>
             ))}
           </dl>
@@ -574,7 +575,7 @@ export default function RealPaymentHandoff({
               <Download className="h-3.5 w-3.5" />
               {t.handoff.savePng}
             </button>
-            <span data-tp-tech="" className="min-w-0 truncate font-mono text-slate-400">
+            <span data-tp-tech="" className="tp-code min-w-0 truncate text-slate-400">
               {deeplink}
             </span>
           </div>
@@ -588,7 +589,7 @@ export default function RealPaymentHandoff({
               <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" />
             </summary>
             <div className="border-t border-slate-100 px-3 py-2">
-              <p className="font-mono text-[10px] leading-relaxed break-all text-slate-700">{payload}</p>
+              <p className="tp-code text-[10px] leading-relaxed break-all text-slate-700">{payload}</p>
               {selfCheck?.ok && (
                 <p className="mt-1.5 flex items-center gap-1 text-[10px] font-semibold text-emerald-700">
                   <ShieldCheck className="h-3.5 w-3.5" />

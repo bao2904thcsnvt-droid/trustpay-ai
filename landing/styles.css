@@ -1,11 +1,5 @@
-/* Geist Pixel Circle — chỉ là font dự phòng cho BubbledotICG-FinePos (tải từ OnlineWebFonts). */
-@font-face {
-  font-family: "Geist Pixel Circle";
-  src: url("fonts/GeistPixel-Circle.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
+/* Font hiển thị chấm ma trận lấy hoàn toàn từ CDN (BubbledotICG-FinePos, OnlineWebFonts);
+   "Geist Pixel Circle" chỉ được dùng nếu máy người xem đã cài sẵn — không tham chiếu tệp cục bộ. */
 
 :root {
   --bg: #000000;

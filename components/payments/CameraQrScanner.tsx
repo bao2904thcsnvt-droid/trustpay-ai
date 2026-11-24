@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { createPortal } from "react-dom";
-import { Camera, ScanLine, Upload, X } from "lucide-react";
+import { Camera, ScanLine, Upload, X, Zap } from "lucide-react";
 import { useI18n } from "@/components/i18n/I18nProvider";
 
 interface DetectedBarcodeLike {
@@ -48,6 +48,22 @@ export default function CameraQrScanner({ onDetected, onClose }: CameraQrScanner
   const [status, setStatus] = useState<ScannerStatus>(initialStatus);
   const [photoError, setPhotoError] = useState(false);
   const [manual, setManual] = useState("");
+  // Đèn flash (torch): chỉ bật được khi thiết bị / trình duyệt hỗ trợ.
+  const trackRef = useRef<MediaStreamTrack | null>(null);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+
+  const toggleTorch = async () => {
+    const track = trackRef.current;
+    if (!track) return;
+    const next = !torchOn;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: next } as unknown as MediaTrackConstraintSet] });
+      setTorchOn(next);
+    } catch {
+      setTorchSupported(false);
+    }
+  };
 
   useEffect(() => {
     onDetectedRef.current = onDetected;
@@ -76,6 +92,10 @@ export default function CameraQrScanner({ onDetected, onClose }: CameraQrScanner
         }
         const video = videoRef.current;
         if (!video) return;
+        const videoTrack = stream.getVideoTracks()[0] ?? null;
+        trackRef.current = videoTrack;
+        const capabilities = (videoTrack?.getCapabilities?.() ?? {}) as { torch?: boolean };
+        if (capabilities.torch === true) setTorchSupported(true);
         video.srcObject = stream;
         await video.play().catch(() => undefined);
 
@@ -190,7 +210,8 @@ export default function CameraQrScanner({ onDetected, onClose }: CameraQrScanner
 
         <div className="relative mx-4 aspect-square overflow-hidden rounded-2xl bg-black">
           <video ref={videoRef} playsInline muted autoPlay className="h-full w-full object-cover" />
-          <div aria-hidden="true" className="pointer-events-none absolute inset-[14%] rounded-2xl border-4 border-white/80">
+          {/* Khung ngắm phong cách chấm ma trận trắng */}
+          <div aria-hidden="true" className="mb-reticle">
             {status === "scanning" && <span className="tp-scan-line absolute right-2 left-2 h-0.5" />}
           </div>
           <p className="absolute inset-x-3 bottom-3 rounded-xl bg-black/60 px-3 py-2 text-center text-xs font-semibold">
@@ -207,16 +228,27 @@ export default function CameraQrScanner({ onDetected, onClose }: CameraQrScanner
               className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-white/10 px-4 py-2.5 text-xs font-bold hover:bg-white/20"
             >
               <Upload className="h-4 w-4" />
-              {t.camera.fromPhoto}
+              {t.mob.camera.gallery}
             </button>
+            {/* Không đặt `capture` để điện thoại cho chọn ảnh từ thư viện (và vẫn có tùy chọn chụp mới). */}
             <input
               ref={fileRef}
               type="file"
               accept="image/*"
-              capture="environment"
               className="hidden"
               onChange={(event) => void handlePhoto(event)}
             />
+            <button
+              type="button"
+              disabled={!torchSupported}
+              aria-pressed={torchOn}
+              title={torchSupported ? undefined : t.mob.camera.flashUnavailable}
+              onClick={() => void toggleTorch()}
+              className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-white/10 px-4 py-2.5 text-xs font-bold hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Zap className="h-4 w-4" />
+              {torchSupported ? (torchOn ? t.mob.camera.flashOff : t.mob.camera.flashOn) : t.mob.camera.flashUnavailable}
+            </button>
           </div>
           {photoError && <p className="text-xs font-semibold text-amber-300">{t.camera.photoNoQr}</p>}
           <form

@@ -4,6 +4,7 @@ import { enExt, viExt, type ExtMessages } from "@/lib/i18n/messages-ext";
 import { enExtR3, viExtR3, type ExtR3Messages } from "@/lib/i18n/messages-ext-r3";
 import { enExtR4, viExtR4, type ExtR4Messages } from "@/lib/i18n/messages-ext-r4";
 import { enExtR5, viExtR5, type ExtR5Messages } from "@/lib/i18n/messages-ext-r5";
+import { enExtR7, viExtR7, type ExtR7Messages } from "@/lib/i18n/messages-ext-r7";
 
 /**
  * Từ điển giao diện VI/EN của TrustPay AI. Bản tiếng Anh dùng chung kiểu
@@ -604,13 +605,13 @@ const viCore = {
 };
 
 /** Vòng 2: trộn từ điển bổ sung (theme, hướng dẫn, VietQR, Call Shield, Copilot, FinOps). */
-const vi = { ...viCore, ...viExt, ...viExtR3, ...viExtR4, ...viExtR5 };
+const vi = { ...viCore, ...viExt, ...viExtR3, ...viExtR4, ...viExtR5, ...viExtR7 };
 
 export type Messages = typeof vi;
 
 const enCore: Omit<
   Messages,
-  keyof ExtMessages | keyof ExtR3Messages | keyof ExtR4Messages | keyof ExtR5Messages
+  keyof ExtMessages | keyof ExtR3Messages | keyof ExtR4Messages | keyof ExtR5Messages | keyof ExtR7Messages
 > = {
   common: {
     appName: "TrustPay AI",
@@ -1124,6 +1125,6 @@ const enCore: Omit<
   },
 };
 
-const en: Messages = { ...enCore, ...enExt, ...enExtR3, ...enExtR4, ...enExtR5 };
+const en: Messages = { ...enCore, ...enExt, ...enExtR3, ...enExtR4, ...enExtR5, ...enExtR7 };
 
 export const MESSAGES: Record<AppLanguage, Messages> = { vi, en };

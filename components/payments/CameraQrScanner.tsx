@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { createPortal } from "react-dom";
 import { Camera, ScanLine, Upload, X, Zap } from "lucide-react";
+import { analyzeQrIntegrityFromVideo, type QrIntegrityResult } from "@/lib/cv-forensics";
 import { useI18n } from "@/components/i18n/I18nProvider";
 
 interface DetectedBarcodeLike {
   rawValue: string;
+  boundingBox?: { x: number; y: number; width: number; height: number };
 }
 interface BarcodeDetectorLike {
   detect(source: ImageBitmapSource): Promise<DetectedBarcodeLike[]>;
@@ -18,8 +20,11 @@ interface BarcodeDetectorCtor {
 type ScannerStatus = "starting" | "scanning" | "denied" | "unsupported" | "insecure";
 
 export interface CameraQrScannerProps {
-  /** Đọc được chuỗi QR (từ camera, ảnh chụp hoặc dán tay). */
-  onDetected: (raw: string) => void;
+  /**
+   * Đọc được chuỗi QR (từ camera, ảnh chụp hoặc dán tay). Khi quét trực tiếp bằng camera, kèm
+   * kết quả đo viền mã (CV Forensics) để cảnh báo tem dán đè.
+   */
+  onDetected: (raw: string, integrity?: QrIntegrityResult | null) => void;
   onClose: () => void;
 }
 
@@ -112,11 +117,18 @@ export default function CameraQrScanner({ onDetected, onClose }: CameraQrScanner
           try {
             if (video.readyState >= 2) {
               const codes = await detector.detect(video);
-              const raw = codes.find((code) => code.rawValue)?.rawValue;
-              if (raw && !cancelled) {
+              const hit = codes.find((code) => code.rawValue);
+              if (hit && !cancelled) {
                 cancelled = true;
+                // Đo viền mã trên đúng khung hình vừa đọc, TRƯỚC khi tắt camera.
+                let integrity: QrIntegrityResult | null = null;
+                try {
+                  integrity = hit.boundingBox ? analyzeQrIntegrityFromVideo(video, hit.boundingBox) : null;
+                } catch {
+                  integrity = null;
+                }
                 stop();
-                onDetectedRef.current(raw);
+                onDetectedRef.current(hit.rawValue, integrity);
                 return;
               }
             }

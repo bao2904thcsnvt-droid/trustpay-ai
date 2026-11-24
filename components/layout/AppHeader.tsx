@@ -10,11 +10,15 @@ import {
   Ellipsis,
   Gauge,
   Menu,
+  Moon,
   RotateCcw,
   ShieldAlert,
+  Sun,
   Wallet,
   X,
 } from "lucide-react";
+import { setThemePreference } from "@/lib/preferences/preferences-store";
+import { useResolvedTheme } from "@/components/theme/ThemeController";
 import type { UiMode } from "@/lib/hub/hub-store";
 import { useI18n } from "@/components/i18n/I18nProvider";
 import LanguageToggle from "@/components/layout/LanguageToggle";
@@ -72,6 +76,7 @@ export default function AppHeader({
   onLogoClick,
 }: AppHeaderProps) {
   const { t } = useI18n();
+  const theme = useResolvedTheme();
   // Easy Mode: ẩn Ops, AWS FinOps, Nhúng SDK và thẻ chào mừng chọn vai trò.
   const easyMode = uiMode === "easy";
   const showTabs = !embedMode && !easyMode;
@@ -309,6 +314,18 @@ export default function AppHeader({
               {resetContent}
             </button>
           </div>
+
+          {/* Daylight Mode (nền sáng dịu #F8FAFC) ↔ Obsidian Slate — luôn ở thanh trên cùng. */}
+          <button
+            type="button"
+            onClick={() => setThemePreference(theme === "dark" ? "light" : "dark")}
+            aria-pressed={theme === "light"}
+            aria-label={t.theme.switchTo(theme === "dark" ? "light" : "dark")}
+            title={t.theme.switchTo(theme === "dark" ? "light" : "dark")}
+            className="inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 transition-colors hover:bg-slate-100"
+          >
+            {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          </button>
 
           <div ref={menuRef} className="relative">
             <button

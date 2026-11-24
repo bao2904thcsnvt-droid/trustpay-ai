@@ -193,8 +193,9 @@
   --color-momo-primary: var(--momo-primary);
   --color-momo-secondary: var(--momo-secondary);
   --color-momo-soft: var(--momo-soft);
-  --font-sans: var(--font-be-vietnam-pro), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+  /* Vòng 7: Be Vietnam Pro (chữ tiếng Việt) · Inter tabular-nums (số tiền) · JetBrains Mono (STK, BIN, TLV, SHA-256). */
+  --font-sans: var(--font-be-vietnam-pro), "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 body {
@@ -2457,5 +2458,240 @@ html:not(.dark) .bg[data-mode="workspace"] {
 @media (min-width: 769px) {
   .mb-tabbar-standalone-only {
     display: none;
+  }
+}
+
+/* ===================================================================== */
+/* Vòng 7 — PROMAX ERGONOMIC FINTECH (khối cuối tệp, thắng các vòng trước) */
+/* Obsidian Slate dịu mắt, chữ Be Vietnam Pro / Inter tabular / JetBrains  */
+/* ===================================================================== */
+:root {
+  --pm-bg: #090d16;
+  --pm-card: rgba(15, 23, 42, 0.82);
+  --pm-hair: rgba(148, 163, 184, 0.18);
+  --pm-text: #f1f5f9;
+  --pm-text-2: #94a3b8;
+  --pm-safe: #10b981;
+  --pm-warn: #f59e0b;
+  --pm-danger: #f43f5e;
+  --pm-accent: #38bdf8;
+  --text: var(--pm-text);
+  --muted: var(--pm-text-2);
+  --font-sans: var(--font-be-vietnam-pro), "Segoe UI", system-ui, sans-serif;
+  /* Bỏ font chấm ma trận: tiêu đề Hero cũng dùng Be Vietnam Pro để dấu tiếng Việt rõ nét. */
+  --font-display: var(--font-be-vietnam-pro), "Segoe UI", system-ui, sans-serif;
+  --font-num: var(--font-inter), var(--font-be-vietnam-pro), system-ui, sans-serif;
+  --font-code: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
+
+html {
+  font-size: 16px;
+}
+
+body {
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+}
+
+p {
+  line-height: 1.6;
+}
+
+/* Số tiền, số dư, chỉ số rủi ro: Inter + tabular-nums → các con số thẳng cột. */
+.tp-num,
+.hv-stat-value {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: -0.01em;
+}
+
+/* STK, BIN, payload TLV / CRC-16, SHA-256, log Agent. */
+.font-mono,
+.tp-mono-svg {
+  font-family: var(--font-code);
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
+/* Cỡ chữ đọc thoải mái: nâng các cỡ nhỏ nhất của giao diện (tối thiểu ~12px cho chú thích). */
+.text-\[10px\] {
+  font-size: 11.5px;
+}
+
+.text-\[11px\] {
+  font-size: 12.5px;
+}
+
+/* Nâng cỡ chữ bằng token theme (giữ đúng thứ tự các biến thể responsive sm:/md:…). */
+@theme {
+  --text-xs: 0.84375rem;
+  --text-xs--line-height: 1.55;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.6;
+}
+
+/* ---------- Dark: Obsidian Slate dịu mắt (thay đen #000 / trắng chói #fff) ---------- */
+.dark body,
+.dark .tp-follow-theme {
+  --background: var(--pm-bg);
+  --foreground: var(--pm-text);
+  --color-white: var(--pm-card);
+  --color-slate-50: rgba(9, 13, 22, 0.6);
+  --color-slate-100: rgba(148, 163, 184, 0.1);
+  --color-slate-200: var(--pm-hair);
+  --color-slate-300: rgba(148, 163, 184, 0.3);
+  --color-slate-400: #7c8aa0;
+  --color-slate-500: var(--pm-text-2);
+  --color-slate-600: #a8b4c5;
+  --color-slate-700: #cbd5e1;
+  --color-slate-800: #e2e8f0;
+  --color-slate-900: var(--pm-text);
+  --color-slate-950: #f8fafc;
+  --color-emerald-600: var(--pm-safe);
+  --color-emerald-700: #34d399;
+  --color-amber-600: var(--pm-warn);
+  --color-amber-700: #fbbf24;
+  --color-rose-600: var(--pm-danger);
+  --color-rose-700: #fb7185;
+  --color-sky-600: var(--pm-accent);
+  --color-sky-700: #7dd3fc;
+}
+
+.dark body {
+  background: var(--pm-bg);
+  color: var(--pm-text);
+}
+
+/* Thẻ kính nổi: rgba(15,23,42,.82) + blur(20px) + viền mảnh dịu. */
+.dark body :is(.rounded-3xl.bg-white, .rounded-3xl[class*="bg-white/"]):not(:has(.fixed)),
+.dark :is(#tp-linked-accounts, #tp-real-handoff, #tp-trusted-payees, #tp-split-bill, #tp-ai-check, #tp-qr-inspector).bg-white {
+  background: var(--pm-card);
+  border-color: var(--pm-hair);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 20px 50px -34px rgba(0, 0, 0, 0.85);
+}
+
+.dark .tp-appbar {
+  background: rgba(9, 13, 22, 0.84);
+  border-bottom-color: var(--pm-hair);
+}
+
+.dark .mb-tabbar {
+  background: rgba(9, 13, 22, 0.94);
+  border-top-color: var(--pm-hair);
+}
+
+.dark .bg {
+  background: var(--pm-bg);
+}
+
+/* Không gian làm việc: video chỉ còn là chiều sâu rất mờ. */
+.bg[data-mode="workspace"] .bg-shade {
+  background: rgba(9, 13, 22, 0.9);
+}
+
+/* Hero: lớp scrim gradient — ánh sáng phía sau không bao giờ làm lóa chữ. */
+.bg[data-mode="hero"] .bg-shade {
+  background: linear-gradient(180deg, rgba(9, 13, 22, 0.72) 0%, rgba(9, 13, 22, 0.86) 65%, #090d16 100%);
+}
+
+.hv {
+  color: var(--pm-text);
+}
+
+.hv-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  color: var(--pm-text);
+}
+
+@media (max-width: 720px) {
+  .hv-title {
+    letter-spacing: -0.02em;
+  }
+}
+
+@media (max-width: 420px) {
+  .hv-title {
+    letter-spacing: -0.015em;
+  }
+}
+
+.hv-desc {
+  color: var(--pm-text-2);
+  opacity: 1;
+  font-size: clamp(15px, 0.9rem + 0.25vw, 17px);
+  line-height: 1.6;
+}
+
+.hv-stat-symbol {
+  font-family: var(--font-num);
+  font-weight: 600;
+  color: var(--pm-accent);
+}
+
+.hv-stat-value,
+.hv-stat-value small {
+  color: var(--pm-text);
+}
+
+.hv-stat-label {
+  color: var(--pm-text-2);
+  font-size: 0.8rem;
+}
+
+.hv-trust-pill {
+  color: #cbd5e1;
+}
+
+.hv-cta {
+  background: var(--pm-text);
+  color: #090d16;
+}
+
+/* ---------- Easy Mode: chữ lớn 18–20px, nút tối thiểu 52px cho người lớn tuổi ---------- */
+.tp-easy {
+  font-size: 18px;
+}
+
+.tp-easy :is(button, [role="button"], select, input:not([type="checkbox"], [type="radio"], [type="file"])) {
+  min-height: 52px;
+}
+
+.tp-easy .text-xs {
+  font-size: 16px;
+}
+
+.tp-easy .text-sm {
+  font-size: 18px;
+}
+
+.tp-easy .text-base {
+  font-size: 20px;
+}
+
+/* ---------- Bước suy luận của AI Agent hiện lần lượt ---------- */
+@keyframes tp-agent-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.tp-agent-step {
+  animation: tp-agent-in 0.35s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tp-agent-step {
+    animation: none;
   }
 }

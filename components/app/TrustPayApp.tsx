@@ -144,6 +144,16 @@ import MobileTabBar, { type MobileTab } from "@/components/mobile/MobileTabBar";
 import InterbankPanel from "@/components/mobile/InterbankPanel";
 import BankLinkingPanel from "@/components/mobile/BankLinkingPanel";
 
+// Vòng 7 — ProMax: AI Agent 4 bước, Edge ML hành vi, CV Forensics, XAI, chuỗi Audit SHA-256.
+import { BehaviorTracker, predictCoercion, type CoercionPrediction } from "@/lib/behavioral-ml";
+import { runInvestigation, type InvestigationReport } from "@/lib/investigation-agent";
+import { amountBand, appendAudit, auditStore, type AuditKind, type AuditValue } from "@/lib/audit-chain";
+import { sha256HexSync } from "@/lib/crypto/sha256";
+import AgentTracePanel from "@/components/promax/AgentTracePanel";
+import BehaviorRiskMeter from "@/components/promax/BehaviorRiskMeter";
+import CvForensicsPanel from "@/components/promax/CvForensicsPanel";
+import OpsAnalyticsPanel from "@/components/OpsAnalyticsPanel";
+
 /** Điện thoại ≤768px hoặc PWA đã cài (standalone) → Không gian Ứng dụng Di động. */
 const MOBILE_SHELL_QUERY = "(max-width: 768px), (display-mode: standalone)";
 
@@ -185,6 +195,8 @@ interface TransferSession {
   payee: PayeeDetails | null;
   /** Vòng 4: nội dung chuyển khoản gợi ý từ Paste-to-Pay (null → suy ra từ câu lệnh). */
   memo: string | null;
+  /** Vòng 7: mức rủi ro hợp nhất của AI Agent (chỉ nâng — dùng để khóa chuyển tiền thật). */
+  agentLevel: TransactionAnalysisResponse["scamReport"]["riskLevel"];
 }
 
 /** Lệnh điền sẵn cho biểu mẫu chuyển tiền (panel remount theo `nonce`). */
@@ -315,6 +327,45 @@ export default function TrustPayApp() {
   const heroTimerRef = useRef<number | null>(null);
   const reducedMotion = usePrefersReducedMotion();
   const resolvedTheme = useResolvedTheme();
+
+  // Vòng 7 — ProMax: kết quả AI Agent + Edge ML của giao dịch gần nhất; bộ ghi hành vi (chỉ dấu
+  // thời gian phím & số ký tự dán, không lưu nội dung).
+  const [investigation, setInvestigation] = useState<InvestigationReport | null>(null);
+  const [mlPrediction, setMlPrediction] = useState<CoercionPrediction | null>(null);
+  const behaviorTrackerRef = useRef<BehaviorTracker | null>(null);
+  const getBehaviorTracker = () => {
+    if (behaviorTrackerRef.current === null) behaviorTrackerRef.current = new BehaviorTracker();
+    return behaviorTrackerRef.current;
+  };
+
+  useEffect(() => {
+    const inPanel = (target: EventTarget | null) =>
+      target instanceof Element && target.closest("#tp-transfer-panel, #tp-payee-fields") !== null;
+    const onKey = (event: KeyboardEvent) => {
+      if (!inPanel(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key.length === 1 || event.key === "Backspace") getBehaviorTracker().key(performance.now());
+    };
+    const onPaste = (event: ClipboardEvent) => {
+      if (!inPanel(event.target)) return;
+      getBehaviorTracker().paste(event.clipboardData?.getData("text/plain").length ?? 0, performance.now());
+    };
+    const onFocus = (event: FocusEvent) => {
+      if (inPanel(event.target)) getBehaviorTracker().start(performance.now());
+    };
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("paste", onPaste, true);
+    document.addEventListener("focusin", onFocus, true);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("paste", onPaste, true);
+      document.removeEventListener("focusin", onFocus, true);
+    };
+  }, []);
+
+  /** Ghi một quyết định bảo mật vào chuỗi Audit SHA-256 (không chứa PII thô). */
+  const recordAudit = (kind: AuditKind, summary: Record<string, AuditValue>) => {
+    void appendAudit(kind, summary, new Date().toISOString());
+  };
 
   // Vòng 6 — Không gian Ứng dụng Di động (máy chủ & lần hydrate đầu luôn false).
   const mobileShell = useMediaQuery(MOBILE_SHELL_QUERY);
@@ -545,8 +596,52 @@ export default function TrustPayApp() {
       ? withStepLatency(meta.trace, "biometric-policy", policyMs)
       : meta.trace;
 
-    const requireBiometric = result.requireBiometric || policy.requireBiometric;
-    const highRiskHold = requireBiometric && result.scamReport.riskScore >= HIGH_RISK_HOLD_SCORE;
+    // Vòng 7 — Edge ML hành vi + AI Agent điều tra 4 bước. Cả hai chỉ được NÂNG rủi ro (ADR-1):
+    // ngưỡng TT 50 vẫn do `decideBiometric` quyết định, Agent hợp nhất điểm LLM làm sàn.
+    const historyAmounts = snapshot.transactions
+      .filter((tx) => tx.status === "COMPLETED" && (tx.channel === "TRANSFER" || tx.channel === "SHOPPING"))
+      .map((tx) => tx.amount);
+    const tracker = getBehaviorTracker();
+    const prediction = predictCoercion(
+      tracker.snapshot(performance.now(), {
+        callRisk: duringCall ? 1 : 0,
+        amount: result.parsedAmount,
+        historyAmounts,
+      }),
+    );
+    tracker.reset();
+    const payeeInstitution = meta.payee ? findInstitution(meta.payee.institutionCode) : undefined;
+    const report = runInvestigation({
+      commandText: meta.commandText,
+      amount: result.parsedAmount,
+      payee:
+        meta.payee && payeeInstitution ? { bankBin: payeeInstitution.bin, accountNumber: meta.payee.accountNumber } : null,
+      memo: meta.memo,
+      history: snapshot.transactions,
+      blacklist: snapshot.blacklist,
+      nowMs,
+      dailyOutflowBefore: dailyBefore,
+      llm: { score: result.scamReport.riskScore, level: result.scamReport.riskLevel, engine: meta.trace.engine },
+      mlProbability: prediction.probability,
+    });
+    setMlPrediction(prediction);
+    setInvestigation(report);
+
+    const requireBiometric = result.requireBiometric || policy.requireBiometric || report.requireBiometric;
+    const highRiskHold =
+      requireBiometric && Math.max(result.scamReport.riskScore, report.finalScore) >= HIGH_RISK_HOLD_SCORE;
+
+    recordAudit("ANALYSIS", {
+      decision: highRiskHold ? "HOLD_GUARDIAN" : report.finalLevel === "LOW" ? "ALLOW" : "REVIEW",
+      riskLevel: report.finalLevel,
+      score: report.finalScore,
+      llmScore: result.scamReport.riskScore,
+      mlPct: Math.round(prediction.probability * 100),
+      biometric: requireBiometric,
+      amountBand: amountBand(result.parsedAmount),
+      engine: meta.trace.engine,
+      commandSha256: sha256HexSync(meta.commandText),
+    });
     const isRisky = result.scamReport.riskLevel !== "LOW";
     const ticketId = result.fintechOpsTicket.ticketId;
     const historyId = highRiskHold ? createClientId("TXN") : null;
@@ -602,6 +697,7 @@ export default function TrustPayApp() {
       reallocation: null,
       payee,
       memo: meta.memo ?? null,
+      agentLevel: report.finalLevel,
     });
     setGuardianApproveError(null);
     setBiometricRequest(null);
@@ -806,6 +902,7 @@ export default function TrustPayApp() {
       prev && prev.id === session.id ? { ...prev, status: "guardian_blocked", guardianDecidedAt: decidedAt } : prev,
     );
     emitSessionDecision(session, "onGuardianDecision", "BLOCK", ["GUARDIAN_BLOCKED"]);
+    recordAudit("GUARDIAN", { decision: "BLOCK", ticketId, amountBand: amountBand(session.analysis.parsedAmount) });
     markTourStep(1);
     showToast({ type: "success", title: t.toast.guardianBlocked, description: t.toast.guardianBlockedDesc(ticketId) });
 
@@ -870,6 +967,7 @@ export default function TrustPayApp() {
       prev && prev.id === session.id ? { ...prev, status: "completed", guardianDecidedAt: decidedAt } : prev,
     );
     emitSessionDecision(session, "onGuardianDecision", "ALLOW", ["GUARDIAN_APPROVED"]);
+    recordAudit("GUARDIAN", { decision: "ALLOW", ticketId, amountBand: amountBand(amount) });
     setGuardianApproveError(null);
     markTourStep(1);
     showToast({
@@ -1077,6 +1175,7 @@ export default function TrustPayApp() {
 
   const handleBlockTicket = (ticketId: string, recipient: string) => {
     walletStore.setState((state) => blockTicket(state, ticketId, OPS_BLOCK_NOTE));
+    recordAudit("OPS_BLOCK", { ticketId, recipientSha256: sha256HexSync(recipient) });
     markTourStep(2);
 
     const session = transfer;
@@ -1101,6 +1200,7 @@ export default function TrustPayApp() {
 
   const handleApproveTicket = (ticketId: string) => {
     walletStore.setState((state) => approveTicket(state, ticketId));
+    recordAudit("OPS_APPROVE", { ticketId });
     showToast({ type: "success", title: t.toast.approved(ticketId), description: t.toast.approvedDesc });
   };
 
@@ -1200,6 +1300,12 @@ export default function TrustPayApp() {
   /** Soi mã VietQR xong → Decision Token `onQrInspected` (SAFE/WARNING → ALLOW, DANGER → BLOCK). */
   const handleQrInspected = (check: QrCheckResult) => {
     const decoded = check.report.decoded;
+    recordAudit("QR_INSPECT", {
+      verdict: check.verdict,
+      score: check.finalScore,
+      crcValid: decoded?.crc.valid ?? false,
+      amountBand: amountBand(check.amount),
+    });
     const reasons: SdkReasonCode[] =
       check.verdict === "DANGER" ? ["QR_DANGER"] : check.verdict === "WARNING" ? ["QR_WARNING"] : ["QR_VERIFIED"];
     if (check.report.blacklistMatches.length > 0) reasons.push("BLACKLIST_MATCH");
@@ -1640,6 +1746,11 @@ export default function TrustPayApp() {
     resetEpochRef.current += 1;
     walletStore.reset();
     featureStore.reset();
+    // Vòng 7: xóa chuỗi Audit, kết quả AI Agent / Edge ML và bộ ghi hành vi.
+    auditStore.reset();
+    setInvestigation(null);
+    setMlPrediction(null);
+    getBehaviorTracker().reset();
     // Vòng 4: xóa tài khoản liên kết, danh bạ tin cậy, cấu hình khóa, ẩn số dư — giữ chế độ Easy/Pro đang dùng.
     const keepMode = hubStore.getSnapshot().uiMode;
     hubStore.reset();
@@ -1746,7 +1857,9 @@ export default function TrustPayApp() {
     }
     const guardianApproved = transfer.status === "completed" && transfer.guardianDecidedAt !== null;
     const assessedSafe =
-      transfer.analysis.scamReport.riskLevel === "LOW" && (transfer.status === "idle" || transfer.status === "completed");
+      transfer.analysis.scamReport.riskLevel === "LOW" &&
+      transfer.agentLevel === "LOW" &&
+      (transfer.status === "idle" || transfer.status === "completed");
     if (!guardianApproved && !assessedSafe) return { kind: "locked", reason: "risk" };
     if (!guardianApproved && transfer.requireBiometric && !transfer.biometricVerified && transfer.status !== "completed") {
       return { kind: "locked", reason: "biometric" };
@@ -1815,7 +1928,17 @@ export default function TrustPayApp() {
     </div>
   );
 
+  // Vòng 7: thanh đo Edge ML + chuỗi suy luận AI Agent ngay dưới thẻ kết quả kiểm tra.
+  const promaxPanels =
+    transfer && investigation && !isAnalyzing ? (
+      <div className="flex flex-col gap-4">
+        {mlPrediction && <BehaviorRiskMeter prediction={mlPrediction} />}
+        <AgentTracePanel key={transfer.id} report={investigation} />
+      </div>
+    ) : null;
+
   const resultPanel = (
+    <>
     <AiShieldResultPanel
       analysis={transfer?.analysis ?? null}
       walletBalance={wallet.balance}
@@ -1837,6 +1960,8 @@ export default function TrustPayApp() {
       reportReady={Boolean(transfer?.reportText)}
       guardianName={wallet.guardian.name}
     />
+    {promaxPanels}
+    </>
   );
 
   const handoffPanel = (
@@ -1926,6 +2051,12 @@ export default function TrustPayApp() {
         onLockCluster={handleLockCluster}
         redactedEvidenceTicketIds={wallet.redactedEvidenceTicketIds}
         highlightBanner={highlightTarget === "tp-anomaly-banner"}
+      />
+      <OpsAnalyticsPanel
+        prediction={mlPrediction}
+        report={investigation}
+        clusterLocked={wallet.anomalyCluster.status === "LOCKED"}
+        blacklist={wallet.blacklist}
       />
     </section>
   );
@@ -2069,7 +2200,12 @@ export default function TrustPayApp() {
               ))}
             </div>
 
-            {shieldTool === "check" && <AiCheckHelper budgets={wallet.budgets} blacklist={wallet.blacklist} />}
+            {shieldTool === "check" && (
+              <>
+                <AiCheckHelper budgets={wallet.budgets} blacklist={wallet.blacklist} />
+                <CvForensicsPanel />
+              </>
+            )}
             {shieldTool === "call" && (
               <CallShieldBar
                 onStart={handleStartCall}
@@ -2182,7 +2318,12 @@ export default function TrustPayApp() {
                 {handoffPanel}
               </div>
             )}
-            {easyPanel === "check" && <AiCheckHelper budgets={wallet.budgets} blacklist={wallet.blacklist} />}
+            {easyPanel === "check" && (
+              <div className="flex flex-col gap-5">
+                <AiCheckHelper budgets={wallet.budgets} blacklist={wallet.blacklist} />
+                <CvForensicsPanel />
+              </div>
+            )}
           </EasyHome>
         ) : embedMode ? (
           /* Vòng 3 — 🔌 Chế độ Nhúng SDK (MoMo Embedded): Host App bao bọc TrustPay AI SDK */
@@ -2293,6 +2434,7 @@ export default function TrustPayApp() {
             <div className={activeAgent === "qr" ? "flex flex-col gap-4" : "hidden"}>
               <QuickTip id="qr" />
               {qrPanel}
+              <CvForensicsPanel />
             </div>
 
             <div

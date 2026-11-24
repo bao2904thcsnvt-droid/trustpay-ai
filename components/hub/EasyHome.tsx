@@ -46,7 +46,7 @@ export default function EasyHome({
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm text-slate-500">{t.easy.balance}</p>
-            <p className="font-mono text-3xl font-extrabold text-slate-900 sm:text-4xl" aria-live="polite">
+            <p className="tp-num text-3xl font-extrabold text-slate-900 sm:text-4xl" aria-live="polite">
               {balanceHidden ? t.privacy.hidden : money(balance)}
             </p>
             <p className="mt-1 text-sm text-slate-500">{t.easy.source(sourceLabel)}</p>

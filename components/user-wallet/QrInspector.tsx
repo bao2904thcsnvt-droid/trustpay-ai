@@ -33,6 +33,7 @@ import { formatLatency } from "@/lib/wallet/format";
 import { setLastQrPayload, useFeatureState } from "@/lib/features/feature-store";
 import { useI18n } from "@/components/i18n/I18nProvider";
 import CameraQrScanner from "@/components/payments/CameraQrScanner";
+import type { QrIntegrityResult } from "@/lib/cv-forensics";
 
 export interface QrCheckResult {
   id: string;
@@ -167,6 +168,7 @@ export default function QrInspector({
   const restoredRef = useRef(false);
   const runRef = useRef(0);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraIntegrity, setCameraIntegrity] = useState<QrIntegrityResult | null>(null);
 
   // Easy Mode: mở thẳng camera khi người dùng bấm "📷 Quét QR trả tiền".
   useEffect(() => {
@@ -472,6 +474,20 @@ export default function QrInspector({
         )}
       </div>
 
+      {/* Vòng 7 — CV Forensics: đo viền mã QR khi quét trực tiếp bằng camera (tem dán đè). */}
+      {cameraIntegrity && source === "camera" && (
+        <p
+          role="status"
+          className={`mt-3 rounded-2xl border px-3 py-2 text-xs font-semibold ${
+            cameraIntegrity.suspicious
+              ? "border-amber-300 bg-amber-50 text-amber-700"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+          }`}
+        >
+          {cameraIntegrity.suspicious ? t.pm.qrOverlay(cameraIntegrity.overlayScore) : t.pm.qrOverlayOk}
+        </p>
+      )}
+
       {/* Kết quả */}
       {!activeCheck || !style ? (
         <p className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-xs text-slate-500">
@@ -719,11 +735,12 @@ export default function QrInspector({
       {cameraOpen && (
         <CameraQrScanner
           onClose={() => setCameraOpen(false)}
-          onDetected={(raw) => {
+          onDetected={(raw, integrity) => {
             setCameraOpen(false);
             setImageStatus("idle");
             setPayload(raw);
             void runInspection(raw, "camera");
+            setCameraIntegrity(integrity ?? null);
           }}
         />
       )}

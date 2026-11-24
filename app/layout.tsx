@@ -1,25 +1,34 @@
 import type { Metadata, Viewport } from "next";
-import { Be_Vietnam_Pro, Geist_Mono } from "next/font/google";
+import { Be_Vietnam_Pro, Inter, JetBrains_Mono } from "next/font/google";
 import { THEME_INIT_SCRIPT } from "@/lib/theme/theme";
-import {
-  CINEMATIC_VIDEO_ORIGIN,
-  FONT_AWESOME_URL,
-  FONT_BUBBLEDOT_URL,
-  FONT_INTER_URL,
-  HERO_BOOT_SCRIPT,
-} from "@/lib/cinematic/cinematic";
+import { CINEMATIC_VIDEO_ORIGIN, FONT_AWESOME_URL, HERO_BOOT_SCRIPT } from "@/lib/cinematic/cinematic";
 import "./globals.css";
 
-/** Be Vietnam Pro: phủ dấu tiếng Việt cho các glyph mà Inter / BubbledotICG-FinePos không có. */
+/**
+ * Vòng 7 — Hệ chữ Ergonomic Fintech (tự host qua next/font, không gọi Google lúc chạy):
+ *  - Be Vietnam Pro: tiêu đề, nhãn, cảnh báo, nội dung tiếng Việt (dấu thanh rõ, không dính chữ).
+ *  - Inter + `font-variant-numeric: tabular-nums`: số dư, số tiền, chỉ số rủi ro, bảng biểu.
+ *  - JetBrains Mono: STK, mã BIN, payload VietQR TLV/CRC-16, mã băm SHA-256, log của AI Agent.
+ */
 const beVietnamPro = Be_Vietnam_Pro({
   variable: "--font-be-vietnam-pro",
   subsets: ["latin", "vietnamese"],
   weight: ["400", "500", "600", "700"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin", "vietnamese"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const jetBrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
+  subsets: ["latin", "vietnamese"],
+  weight: ["400", "500", "600"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -44,7 +53,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#000000",
+  themeColor: "#090D16",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -52,19 +61,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="vi"
       suppressHydrationWarning
-      className={`${beVietnamPro.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${beVietnamPro.variable} ${inter.variable} ${jetBrainsMono.variable} h-full antialiased`}
     >
       <head>
-        {/* Đặt theme (mặc định Dark) trước lần vẽ đầu tiên — đọc tùy chọn đã lưu. */}
+        {/* Đặt theme (mặc định Dark Obsidian Slate) trước lần vẽ đầu tiên — đọc tùy chọn đã lưu. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         {/* Khóa cuộn khi Hero hiện; ẩn Hero ngay từ HTML cho iframe SDK / PWA standalone / lối tắt PWA. */}
         <script dangerouslySetInnerHTML={{ __html: HERO_BOOT_SCRIPT }} />
         <link rel="preconnect" href={CINEMATIC_VIDEO_ORIGIN} />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Hệ font & icon CDN: Inter, BubbledotICG-FinePos (chấm ma trận), Font Awesome 6.5.2. */}
-        <link rel="stylesheet" href={FONT_INTER_URL} />
-        <link rel="stylesheet" href={FONT_BUBBLEDOT_URL} />
+        {/* Icon Font Awesome 6.5.2 (các vòng tròn tin cậy ở Hero). */}
         <link rel="stylesheet" href={FONT_AWESOME_URL} />
       </head>
       <body className="min-h-full flex flex-col bg-slate-50 text-slate-900 font-sans selection:bg-[#d82d8b]/20 selection:text-[#a50064]">

@@ -98,6 +98,16 @@ const EXACT_EN: Record<string, string> = {
     "AWS Rekognition biometric verification succeeded (Demo Mode)",
   "Khuôn mặt không khớp với hồ sơ sinh trắc học đã đăng ký.":
     "The face does not match the registered biometric profile.",
+  "Không xác thực được khuôn mặt (dịch vụ sinh trắc học chưa sẵn sàng hoặc chưa có ảnh gốc đã đăng ký). Giao dịch bị giữ lại.":
+    "Face could not be verified (biometric service unavailable or no enrolled reference photo). The transaction is on hold.",
+  "Lừa đảo cài ứng dụng giả mạo / Mã độc chiếm quyền điều khiển thiết bị":
+    "Fake app install scam / Malware taking over the device",
+  "Yêu cầu cài ứng dụng lạ (VNeID giả, tệp APK, phần mềm điều khiển từ xa) — nguy cơ mã độc chiếm quyền thiết bị và đọc trộm OTP":
+    "Asks you to install an unknown app (fake VNeID, APK file, remote-control software) — malware may take over the device and steal OTPs",
+  "Lừa đảo việc nhẹ lương cao / Nạp tiền làm nhiệm vụ nhận hoa hồng":
+    "“Easy job, high pay” scam / Pay-to-do-tasks for commission",
+  "Dụ nạp tiền làm nhiệm vụ / việc nhẹ lương cao để nhận hoa hồng — tiền nạp thường bị chiếm đoạt sau vài lần trả thưởng nhỏ":
+    "Lures you to deposit money for “tasks” / easy jobs with commission — deposits are usually stolen after a few small payouts",
 };
 
 type Rule = [RegExp, (match: RegExpMatchArray) => string];

@@ -235,15 +235,21 @@ void (async () => {
       const zw = "\u200B";
       const raw = `C${zw}ông an phường yêu cầu chuyển 5.000.000đ gấp`;
       const rRaw = await analyze(req(raw));
-      c.eq(rRaw.scamReport.riskLevel, "LOW", "Chưa chuẩn hóa Unicode nên lọt (hiện trạng)");
+      // T-2.9 (đã vá): bộ luật tự chuẩn hóa Unicode trước khi dò từ khóa.
+      c.ge(rRaw.scamReport.riskScore, 40, "Zero-width giữa chữ không còn né được bộ luật");
+      c.includes(rRaw.scamReport.scamType.toLowerCase(), "công an", "Vẫn nhận diện mạo danh công an");
 
-      const normalized = raw.replace(/[\u200B-\u200D\uFEFF]/g, "");
-      const rNorm = await analyze(req(normalized));
-      c.ge(rNorm.scamReport.riskScore, 40, "Sau khi chuẩn hóa, phát hiện mạo danh công an");
-    },
-    {
-      task: "T-2.9",
-      note: "Bộ luật chưa chuẩn hóa Unicode (NFD, zero-width, homoglyph) trước khi dò từ khóa; cần thêm bước chuẩn hóa như minh họa.",
+      const nfd = "Công an phường yêu cầu chuyển 5.000.000đ gấp".normalize("NFD");
+      const rNfd = await analyze(req(nfd));
+      c.ge(rNfd.scamReport.riskScore, 40, "Tiếng Việt dạng tổ hợp NFD vẫn bị phát hiện");
+
+      // "с" và "о" là chữ Kirin giả dạng Latin.
+      const homoglyph = "\u0421\u043Eng an phường yêu cầu chuyển 5.000.000đ gấp";
+      const rHomo = await analyze(req(homoglyph));
+      c.ge(rHomo.scamReport.riskScore, 40, "Chữ Kirin giả dạng (homoglyph) vẫn bị phát hiện");
+
+      const hiddenAccount = await analyze(req(`Chuyển 6.000.000đ vào STK 9999${zw}88887777`));
+      c.eq(hiddenAccount.scamReport.riskLevel, "HIGH", "Chèn zero-width vào STK Blacklist vẫn bị chặn");
     },
   );
 

@@ -228,15 +228,15 @@ void (async () => {
       c.eq(r.scamReport.riskLevel, "LOW", "Không có dấu hiệu lừa đảo nên rủi ro THẤP");
       c.ok(r.budgetAlert.isExceeded, "Cảnh báo vượt hạn mức danh mục Mua sắm");
 
-      // Chính sách pháp lý tập trung (lib) ra quyết định đúng dù route hiện chưa áp dụng.
+      // T-2.1 (đã vá): route áp biometric-policy làm sàn pháp lý → LOW > 10 triệu vẫn buộc sinh trắc học.
+      c.ok(r.requireBiometric, "Route /api/analyze buộc sinh trắc học cho giao dịch LOW > 10 triệu");
       const decision = decideBiometric({ parsedAmount: r.parsedAmount, riskLevel: r.scamReport.riskLevel });
       c.ok(decision.requireBiometric, "biometric-policy buộc xác thực cho giao dịch > 10 triệu");
       c.ge(decision.legalBasis.length, 1, "Ghi rõ căn cứ pháp lý (QĐ 2345)");
       c.ok(r.parsedAmount > BIOMETRIC_SINGLE_TXN_THRESHOLD_VND, "Vượt ngưỡng cấu hình một lần");
-    },
-    {
-      task: "T-2.1",
-      note: "Route /api/analyze hiện chỉ bật requireBiometric khi HIGH; cần áp biometric-policy để buộc sinh trắc học cho giao dịch LOW > 10 triệu.",
+
+      const small = await analyze(req("Chuyển 450.000đ tiền ăn trưa cho Minh"));
+      c.ok(!small.requireBiometric, "Giao dịch nhỏ rủi ro THẤP không bị buộc sinh trắc học");
     },
   );
 
@@ -245,9 +245,19 @@ void (async () => {
     "F06",
     "Xác thực khuôn mặt (ảnh CCCD mờ) + che giấu số CCCD trong văn bản",
     async (c) => {
+      // T-2.2 (đã vá): mặc định FAIL-CLOSED khi thiếu AWS / ảnh gốc đã đăng ký.
+      const savedDemo = process.env.TRUSTPAY_DEMO_MODE;
+      delete process.env.TRUSTPAY_DEMO_MODE;
       const vf = await verifyFace({ selfieBase64: TINY_PNG_BASE64 });
       c.truthy(typeof vf.similarity === "number", "Trả về độ khớp dạng số");
-      c.ok(vf.matched, "Offline Demo Mode trả kết quả khớp (fail-open)");
+      c.ok(!vf.matched, "Thiếu AWS / ảnh gốc → KHÔNG khớp (fail-closed)");
+      c.eq(vf.similarity, 0, "Độ khớp 0 khi không xác thực được");
+
+      process.env.TRUSTPAY_DEMO_MODE = "1";
+      const demo = await verifyFace({ selfieBase64: TINY_PNG_BASE64 });
+      c.ok(demo.matched, "Chỉ khi đặt rõ TRUSTPAY_DEMO_MODE=1 mới cho khớp (trình diễn)");
+      if (savedDemo === undefined) delete process.env.TRUSTPAY_DEMO_MODE;
+      else process.env.TRUSTPAY_DEMO_MODE = savedDemo;
 
       const raw = "Khách cung cấp CCCD 012345678912 để đối chiếu";
       c.ok(containsRawCccd(raw), "Phát hiện số CCCD thô chưa che");
@@ -255,10 +265,6 @@ void (async () => {
       c.ok(!containsRawCccd(masked), "Sau khi che không còn dãy 12 số");
       c.includes(masked, "012******912", "Che đúng định dạng giữ 3 đầu + 3 cuối");
       c.eq(maskCccd("012345678912"), "012******912", "maskCccd hoạt động đúng");
-    },
-    {
-      task: "T-2.2",
-      note: "verify-face Offline/Demo trả matched=true (fail-open); Production phải fail-closed khi FaceMatches rỗng hoặc dịch vụ lỗi.",
     },
   );
 
@@ -276,10 +282,16 @@ void (async () => {
         "công an",
         "Nhận diện kịch bản mạo danh công an",
       );
-    },
-    {
-      task: "T-2.4",
-      note: "Dấu hiệu 'cài ứng dụng lạ/VNeID giả' chưa được chấm điểm riêng; cần nâng kịch bản này lên HIGH và thêm red flag mã độc chiếm quyền thiết bị.",
+      // T-2.4 (đã vá): cài app lạ / VNeID giả → HIGH + red flag mã độc.
+      c.eq(r.scamReport.riskLevel, "HIGH", "Nâng lên mức rủi ro CAO");
+      c.truthy(
+        r.scamReport.redFlags.some((flag) => flag.includes("mã độc")),
+        "Có red flag mã độc chiếm quyền thiết bị",
+      );
+      c.ok(r.requireBiometric, "Bắt buộc xác thực sinh trắc học");
+
+      const apk = await analyze(req("Tải file apk này về cài để nhận hoàn tiền 500.000đ"));
+      c.ge(apk.scamReport.riskScore, 40, "Dụ cài tệp APK (không mạo danh) vẫn tối thiểu TRUNG BÌNH");
     },
   );
 
@@ -291,10 +303,12 @@ void (async () => {
       const r = await analyze(req("Nạp 2.000.000đ làm nhiệm vụ TikTok để nhận hoa hồng 30%"));
       c.eq(r.parsedAmount, 2_000_000, "Bóc tách đúng số tiền 2 triệu");
       c.truthy(r.scamReport.redFlags.length >= 1, "Luôn có ít nhất một dòng nhận định");
-    },
-    {
-      task: "T-2.4",
-      note: "Kịch bản 'việc nhẹ lương cao / nhiệm vụ nhận hoa hồng' hiện bị chấm THẤP; cần nâng tối thiểu lên MEDIUM theo REQ-A3.6.",
+      // T-2.4 (đã vá): việc nhẹ lương cao / nhiệm vụ nhận hoa hồng → tối thiểu TRUNG BÌNH (REQ-A3.6).
+      c.ge(r.scamReport.riskScore, 40, "Chấm tối thiểu mức rủi ro TRUNG BÌNH");
+      c.includes(r.scamReport.scamType.toLowerCase(), "việc nhẹ", "Nhận diện kịch bản việc nhẹ lương cao");
+
+      const flowers = await analyze(req("Chuyển 300.000đ mua hoa hồng tặng mẹ"));
+      c.eq(flowers.scamReport.riskLevel, "LOW", "Mua hoa hồng thật không bị nhầm là lừa đảo nhiệm vụ");
     },
   );
 

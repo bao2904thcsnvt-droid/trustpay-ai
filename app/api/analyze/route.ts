@@ -19,6 +19,8 @@ import type {
   TransactionAnalysisResponse,
 } from "@/types/trustpay";
 import { DEFAULT_BLACKLIST, DEFAULT_BUDGETS } from "@/lib/mock-scenarios";
+import { decideBiometric } from "@/lib/compliance/biometric-policy";
+import { normalizeForRules } from "@/lib/security/text-normalize";
 import {
   AwsFallbackSignal,
   breakerHeaderValue,
@@ -180,7 +182,7 @@ function parseRecipientFromText(text: string, blacklist: string[]): string {
  * Với `DEFAULT_BUDGETS` (bộ test), hành vi giữ nguyên như trước.
  */
 function detectCategory(text: string, budgets: BudgetCategory[]): CategoryName {
-  const lower = text.toLowerCase();
+  const lower = normalizeForRules(text).toLowerCase();
   const tracks = (name: CategoryName) => budgets.some((b) => b.name === name);
 
   if (
@@ -223,9 +225,11 @@ function buildSmartFallbackAnalysis(
   req: TransactionAnalysisRequest,
   extractedImageText?: string
 ): TransactionAnalysisResponse {
-  const fullText = [req.commandText || "", extractedImageText || ""]
-    .filter(Boolean)
-    .join(" ");
+  // T-2.9: chuẩn hóa Unicode (ký tự vô hình, NFD, full-width, homoglyph) trước MỌI phép dò luật,
+  // kể cả bóc STK / so Blacklist — chèn zero-width vào STK cũng không lọt.
+  const fullText = normalizeForRules(
+    [req.commandText || "", extractedImageText || ""].filter(Boolean).join(" ")
+  );
   const lower = fullText.toLowerCase();
 
   const budgets: BudgetCategory[] =
@@ -297,7 +301,7 @@ function buildSmartFallbackAnalysis(
 
   // 2. Nhóm từ khóa mạo danh cơ quan chức năng / công an / điều tra
   const authorityMatch =
-    /công an|cán bộ|điều tra|viện kiểm sát|tòa án|xác minh tài khoản|phong tỏa|chạy án|lệnh bắt|bộ công an/.test(
+    /\bc[oô]ng an\b|cán bộ|điều tra|viện kiểm sát|tòa án|xác minh tài khoản|phong tỏa|chạy án|lệnh bắt|bộ c[oô]ng an\b/.test(
       lower
     );
   if (authorityMatch) {
@@ -320,6 +324,37 @@ function buildSmartFallbackAnalysis(
     }
     redFlags.push(
       "Yêu cầu chuyển khoản phí trước để nhận phần thưởng / quà tặng giá trị cao (iPhone, bưu kiện)"
+    );
+  }
+
+  // 3b. Yêu cầu cài ứng dụng lạ / VNeID giả / phần mềm điều khiển từ xa (mã độc chiếm quyền thiết bị)
+  const malwareAppMatch =
+    /vneid giả|cài (đặt )?(app|ứng dụng|phần mềm)|tải (app|ứng dụng|phần mềm)|file apk|tệp apk|link apk|\.apk\b|quyền trợ năng|điều khiển từ xa|teamviewer|ultraviewer|anydesk/.test(
+      lower
+    );
+  if (malwareAppMatch) {
+    riskScore += 40;
+    if (!authorityMatch && !prizeScamMatch) {
+      scamType = "Lừa đảo cài ứng dụng giả mạo / Mã độc chiếm quyền điều khiển thiết bị";
+    }
+    redFlags.push(
+      "Yêu cầu cài ứng dụng lạ (VNeID giả, tệp APK, phần mềm điều khiển từ xa) — nguy cơ mã độc chiếm quyền thiết bị và đọc trộm OTP"
+    );
+  }
+
+  // 3c. Việc nhẹ lương cao / làm nhiệm vụ nhận hoa hồng (REQ-A3.6 — tối thiểu TRUNG BÌNH).
+  // Không bắt chữ "hoa hồng" đứng một mình để tránh nhầm với mua hoa.
+  const jobScamMatch =
+    /việc nhẹ lương cao|làm nhiệm vụ|nhiệm vụ (tiktok|shopee|lazada|online|like|đánh giá)|nhận hoa hồng|hưởng hoa hồng|hoa hồng \d+ ?%|chốt đơn ảo|đơn hàng ảo|nạp tiền (để )?(làm|nhận)|cộng tác viên online|tuyển ctv online/.test(
+      lower
+    );
+  if (jobScamMatch) {
+    riskScore += 45;
+    if (!authorityMatch && !prizeScamMatch && !malwareAppMatch) {
+      scamType = "Lừa đảo việc nhẹ lương cao / Nạp tiền làm nhiệm vụ nhận hoa hồng";
+    }
+    redFlags.push(
+      "Dụ nạp tiền làm nhiệm vụ / việc nhẹ lương cao để nhận hoa hồng — tiền nạp thường bị chiếm đoạt sau vài lần trả thưởng nhỏ"
     );
   }
 
@@ -371,7 +406,9 @@ function buildSmartFallbackAnalysis(
         ? `Giao dịch có một số dấu hiệu bất thường (${riskScore}/100). Vui lòng kiểm tra kỹ danh tính người nhận trước khi chuyển khoản.`
         : `Giao dịch thanh toán thuộc danh mục '${category}' có nội dung rõ ràng, người nhận hợp lệ và không nằm trong danh sách cảnh báo lừa đảo.`;
 
-  const requireBiometric = riskLevel === "HIGH";
+  // Sàn pháp lý tập trung (TT 50 / QĐ 2345): rủi ro CAO hoặc > 10 triệu/lần → bắt buộc sinh trắc học,
+  // kể cả khi giao dịch được chấm THẤP. Lũy kế 20 triệu/ngày áp ở client (máy chủ không giữ lịch sử).
+  const requireBiometric = decideBiometric({ parsedAmount, riskLevel }).requireBiometric;
 
   const now = new Date();
   const datePart = now.toISOString().slice(0, 10).replace(/-/g, "");
@@ -614,10 +651,15 @@ ${promptBaseline}`;
         category: aiResponse.category || fallbackBaseline.category,
         budgetAlert: aiResponse.budgetAlert || fallbackBaseline.budgetAlert,
         scamReport: aiResponse.scamReport || fallbackBaseline.scamReport,
+        // AI chỉ được NÂNG yêu cầu sinh trắc học, không được hạ dưới sàn pháp lý của bộ luật.
         requireBiometric:
-          typeof aiResponse.requireBiometric === "boolean"
-            ? aiResponse.requireBiometric
-            : fallbackBaseline.requireBiometric,
+          aiResponse.requireBiometric === true ||
+          fallbackBaseline.requireBiometric ||
+          decideBiometric({
+            parsedAmount:
+              typeof aiResponse.parsedAmount === "number" ? aiResponse.parsedAmount : fallbackBaseline.parsedAmount,
+            riskLevel: (aiResponse.scamReport || fallbackBaseline.scamReport).riskLevel,
+          }).requireBiometric,
         fintechOpsTicket: aiResponse.fintechOpsTicket
           ? {
               ...fallbackBaseline.fintechOpsTicket,

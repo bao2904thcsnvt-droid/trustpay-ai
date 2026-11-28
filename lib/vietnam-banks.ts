@@ -102,7 +102,7 @@ export const VIETNAM_BANKS: readonly VietnamBank[] = Object.freeze([
   bankEntry({ code: "TCB", bin: "970407", appId: "tcb", shortName: "Techcombank", fullName: "Ngân hàng TMCP Kỹ thương Việt Nam" }),
   bankEntry({ code: "BIDV", bin: "970418", appId: "bidv", shortName: "BIDV", fullName: "Ngân hàng TMCP Đầu tư và Phát triển Việt Nam" }),
   bankEntry({ code: "ACB", bin: "970416", appId: "acb", shortName: "ACB", fullName: "Ngân hàng TMCP Á Châu" }),
-  bankEntry({ code: "ICB", bin: "970415", appId: "icb", shortName: "VietinBank", fullName: "Ngân hàng TMCP Công thương Việt Nam" }),
+  bankEntry({ code: "ICB", bin: "970415", appId: "icb", shortName: "VietinBank", fullName: "Ngân hàng TMCP Công Thương Việt Nam" }),
   bankEntry({ code: "TPB", bin: "970423", appId: "tpb", shortName: "TPBank", fullName: "Ngân hàng TMCP Tiên Phong" }),
   bankEntry({ code: "PVCB", bin: "970412", appId: "pvcb", shortName: "PVcomBank", fullName: "Ngân hàng TMCP Đại Chúng Việt Nam" }),
   bankEntry({ code: "VBA", bin: "970405", appId: "vba", shortName: "Agribank", fullName: "Ngân hàng Nông nghiệp và Phát triển Nông thôn Việt Nam" }),
@@ -136,6 +136,38 @@ export function findVietnamBankByBin(bin: string | null | undefined): VietnamBan
     return undefined;
   }
   return VIETNAM_BANKS.find((bank) => bank.bin === value);
+}
+
+const GATEWAY_ALIASES: readonly (readonly [VietnamBankCode, RegExp])[] = [
+  ["ICB", /\b(?:vietin\s?bank|viettinbank|icb|ctg|970415)\b/i],
+  ["VCB", /\b(?:vietcom\s?bank|vcb|970436)\b/i],
+  ["MB", /\b(?:mb\s?bank|mbbank|mb|970422)\b/i],
+  ["TCB", /\b(?:techcom\s?bank|tcb|970407)\b/i],
+  ["BIDV", /\b(?:bidv|970418)\b/i],
+  ["ACB", /\b(?:acb|970416)\b/i],
+  ["TPB", /\b(?:tp\s?bank|tpbank|tpb|970423)\b/i],
+  ["PVCB", /\b(?:pvcom\s?bank|pvcombank|pvcb|970412)\b/i],
+  ["VBA", /\b(?:agri\s?bank|agribank|vba|970405)\b/i],
+  ["VPB", /\b(?:vp\s?bank|vpbank|vpb|970432)\b/i],
+  ["MOMO", /\b(?:momo|971025)\b/i],
+];
+
+/** Đối chiếu tên cổng ngân hàng từ Webhook SePay / Casso (vd "VietinBank", "MBBank") về mã ngân hàng chuẩn. */
+export function findVietnamBankByGateway(gateway: string | null | undefined): VietnamBank | undefined {
+  if (typeof gateway !== "string" || !gateway.trim()) {
+    return undefined;
+  }
+  const raw = gateway.trim();
+  const byCode = findVietnamBank(raw.toUpperCase());
+  if (byCode) return byCode;
+  const byBin = findVietnamBankByBin(raw);
+  if (byBin) return byBin;
+  for (const [code, pattern] of GATEWAY_ALIASES) {
+    if (pattern.test(raw)) {
+      return findVietnamBank(code);
+    }
+  }
+  return undefined;
 }
 
 /**

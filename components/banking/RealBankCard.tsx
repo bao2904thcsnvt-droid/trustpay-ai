@@ -43,7 +43,7 @@ import {
 } from "@/lib/compliance/biometric-policy";
 import { useI18n } from "@/components/i18n/I18nProvider";
 import QrCodeSvg, { downloadQrPng, useQrMatrix } from "@/components/payments/QrCodeSvg";
-import BankSyncModal from "@/components/BankSyncModal";
+import BankSyncModal, { readSavedSepayToken } from "@/components/BankSyncModal";
 
 /** 11 ngân hàng & ví phổ biến hiển thị chọn nhanh 1 chạm (đã gồm VietinBank BIN 970415). */
 const QUICK_BANKS: readonly { code: PayeeInstitutionCode; label: string }[] = [
@@ -138,8 +138,10 @@ export default function RealBankCard({
       if (!activeAccountId || !activeAccountNumber) return;
       if (manual) setSyncingNow(true);
       try {
+        const sepayToken = readSavedSepayToken();
         const res = await fetch(`/api/bank/sync?accountNumber=${encodeURIComponent(activeAccountNumber)}`, {
           cache: "no-store",
+          ...(sepayToken ? { headers: { "x-sepay-api-token": sepayToken } } : {}),
         });
         if (!res.ok) return;
         const data = (await res.json()) as BankSyncGetResponse;
@@ -396,7 +398,7 @@ export default function RealBankCard({
                           <p className="tp-num text-lg font-extrabold text-white">
                             {balanceHidden ? t.privacy.hidden : money(activeReal.referenceBalance)}
                           </p>
-                          {activeSyncMeta?.event && !balanceHidden && (
+                          {activeSyncMeta?.event && activeSyncMeta.event.deltaAmount !== 0 && !balanceHidden && (
                             <span
                               className={`tp-num rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
                                 activeSyncMeta.event.deltaAmount >= 0
@@ -695,16 +697,22 @@ export default function RealBankCard({
           account={activeReal}
           onClose={() => setSyncModalOpen(false)}
           onSynced={(newBalance, event) => {
-            if (typeof newBalance === "number") {
-              updateLinkedAccountBalance(activeReal.id, newBalance);
+            updateLinkedAccountBalance(activeReal.id, typeof newBalance === "number" ? newBalance : null);
+            if (event) {
+              setSyncMetaByAccount((prev) => ({
+                ...prev,
+                [activeReal.accountNumber]: {
+                  event,
+                  updatedAt: new Date().toISOString(),
+                },
+              }));
+            } else {
+              setSyncMetaByAccount((prev) => {
+                const next = { ...prev };
+                delete next[activeReal.accountNumber];
+                return next;
+              });
             }
-            setSyncMetaByAccount((prev) => ({
-              ...prev,
-              [activeReal.accountNumber]: {
-                event,
-                updatedAt: new Date().toISOString(),
-              },
-            }));
           }}
         />
       )}

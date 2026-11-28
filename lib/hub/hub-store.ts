@@ -63,6 +63,8 @@ export interface LinkedAccount {
   verifyMethod?: LinkedAccountVerifyMethod | null;
   /** Số dư tham chiếu do người dùng tự nhập (`null`: quản lý trực tiếp trên App Ngân hàng). */
   referenceBalance?: number | null;
+  /** Chuỗi EMVCo QR riêng lấy từ SePay (nếu người dùng tự tải ảnh QR từ my.sepay.vn gắn vào tài khoản). */
+  sepayQrPayload?: string | null;
 }
 
 /** Tài khoản đã qua `sanitize` trong store — luôn đủ các trường vòng 9 + số dư tham chiếu. */
@@ -71,6 +73,7 @@ export interface StoredLinkedAccount extends LinkedAccount {
   verifiedAt: string | null;
   verifyMethod: LinkedAccountVerifyMethod | null;
   referenceBalance: number | null;
+  sepayQrPayload: string | null;
 }
 
 /** Tham số tùy chọn khi thêm / hoàn thiện tài khoản (nơi gọi cũ bỏ qua được). */
@@ -155,6 +158,7 @@ function demoAccount(id: string, institutionCode: PayeeInstitutionCode, last4: s
     verifiedAt: null,
     verifyMethod: null,
     referenceBalance: null,
+    sepayQrPayload: null,
   };
 }
 
@@ -279,6 +283,8 @@ function sanitizeLinkedAccount(raw: unknown): StoredLinkedAccount | null {
   const refBalRaw = record.referenceBalance;
   const referenceBalance =
     typeof refBalRaw === "number" && Number.isFinite(refBalRaw) && refBalRaw >= 0 ? Math.round(refBalRaw) : null;
+  const sepayQrRaw = typeof record.sepayQrPayload === "string" ? record.sepayQrPayload.trim() : "";
+  const sepayQrPayload = sepayQrRaw.length >= 20 && sepayQrRaw.length <= 512 ? sepayQrRaw : null;
   return {
     id,
     institutionCode: record.institutionCode,
@@ -290,6 +296,7 @@ function sanitizeLinkedAccount(raw: unknown): StoredLinkedAccount | null {
     verifiedAt: verified ? verifiedAt : null,
     verifyMethod: verified ? verifyMethod : null,
     referenceBalance,
+    sepayQrPayload,
   };
 }
 
@@ -569,6 +576,20 @@ export function deductLinkedAccountReferenceBalance(id: string, amount: number):
         item.id === id
           ? { ...item, referenceBalance: Math.max(0, (item.referenceBalance ?? 0) - Math.round(amount)) }
           : item,
+      ),
+    };
+  });
+}
+
+/** Gắn / xóa chuỗi mã QR SePay riêng của tài khoản ngân hàng liên kết. */
+export function updateLinkedAccountSepayQr(id: string, sepayQrPayload: string | null): void {
+  const clean = typeof sepayQrPayload === "string" && sepayQrPayload.trim().length >= 20 ? sepayQrPayload.trim().slice(0, 512) : null;
+  hubStore.setState((prev) => {
+    if (!prev.linkedAccounts.some((item) => item.id === id)) return prev;
+    return {
+      ...prev,
+      linkedAccounts: prev.linkedAccounts.map((item) =>
+        item.id === id ? { ...item, sepayQrPayload: clean } : item,
       ),
     };
   });

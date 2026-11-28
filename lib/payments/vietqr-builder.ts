@@ -156,6 +156,66 @@ export function buildBankDeeplink(slug: string): string {
   return `${VIETQR_DEEPLINK_BASE}?app=${encodeURIComponent(slug)}`;
 }
 
+/** Tiền tố nội dung bắt buộc để VietinBank / SePay Open Banking tự động bắn Webhook thời gian thực. */
+export const SEPAY_MEMO_PREFIX = "SEVQR";
+
+const SEPAY_BANK_NAME: Partial<Record<PayeeInstitutionCode, string>> = {
+  ICB: "VietinBank",
+  VCB: "Vietcombank",
+  MB: "MBBank",
+  TCB: "Techcombank",
+  BIDV: "BIDV",
+  ACB: "ACB",
+  TPB: "TPBank",
+  PVCB: "PVcomBank",
+  VBA: "Agribank",
+  VPB: "VPBank",
+};
+
+/**
+ * Chuẩn hóa nội dung chuyển khoản chuẩn SePay (luôn bắt đầu bằng `SEVQR ` và không vượt 25 ký tự EMVCo).
+ * Ví dụ: "" → "SEVQR TRUSTPAY", "tien an" → "SEVQR tien an", "SEVQR 123" → "SEVQR 123".
+ */
+export function ensureSepayMemo(rawMemo: string, fallbackSuffix = "TRUSTPAY"): string {
+  const clean = sanitizeMemo(rawMemo);
+  if (/^SEVQR(?:\s|$)/i.test(clean)) {
+    return clean.replace(/^sevqr/i, SEPAY_MEMO_PREFIX).slice(0, VIETQR_MEMO_MAX).trim();
+  }
+  const suffix = clean || sanitizeMemo(fallbackSuffix);
+  const maxSuffix = Math.max(0, VIETQR_MEMO_MAX - SEPAY_MEMO_PREFIX.length - 1);
+  const body = suffix.slice(0, maxSuffix).trim();
+  return body ? `${SEPAY_MEMO_PREFIX} ${body}` : SEPAY_MEMO_PREFIX;
+}
+
+/**
+ * URL ảnh QR chuẩn SePay (`qr.sepay.vn/img`) kèm tiền tố `SEVQR` trong nội dung chuyển khoản
+ * để biến động số dư (đặc biệt VietinBank) được đồng bộ tự động lên SePay theo thời gian thực.
+ */
+export function buildSepayQrImageUrl(params: {
+  institution: PayeeInstitution;
+  accountNumber: string;
+  amount: number | null;
+  memo: string;
+}): string | null {
+  const bankName = SEPAY_BANK_NAME[params.institution.code];
+  if (!bankName) return null;
+  const account = normalizeAccountNumber(params.accountNumber);
+  if (!account) return null;
+  const query: string[] = [
+    `acc=${encodeURIComponent(account)}`,
+    `bank=${encodeURIComponent(bankName)}`,
+    "template=compact",
+  ];
+  if (isValidVietQrAmount(params.amount)) {
+    query.push(`amount=${params.amount}`);
+  }
+  const des = ensureSepayMemo(params.memo);
+  if (des) {
+    query.push(`des=${encodeURIComponent(des)}`);
+  }
+  return `https://qr.sepay.vn/img?${query.join("&")}`;
+}
+
 /**
  * Câu lệnh gửi Lá chắn AI: nối STK người nhận đã chọn vào lệnh tự nhiên để bộ
  * luật + Bedrock đối chiếu Blacklist trên ĐÚNG tài khoản sẽ nhận tiền thật.

@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import jsQR from "jsqr";
 import {
   ArrowUpRight,
   Building2,
   Check,
   Download,
+  ExternalLink,
   Eye,
   EyeOff,
   Gauge,
@@ -14,6 +16,8 @@ import {
   QrCode,
   RefreshCw,
   ShieldCheck,
+  Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import {
@@ -22,6 +26,8 @@ import {
 } from "@/lib/payments/banks";
 import {
   buildPayeeVietQr,
+  buildSepayQrImageUrl,
+  ensureSepayMemo,
   normalizeAccountNumber,
   sanitizeAccountName,
   sanitizeMemo,
@@ -31,6 +37,7 @@ import {
   addLinkedAccount,
   setDefaultSource,
   updateLinkedAccountBalance,
+  updateLinkedAccountSepayQr,
   type StoredLinkedAccount,
 } from "@/lib/hub/hub-store";
 import type { BankSyncEvent, BankSyncGetResponse } from "@/lib/banking/bank-sync";
@@ -127,8 +134,12 @@ export default function RealBankCard({
   >({});
 
   const [qrOpen, setQrOpen] = useState(false);
+  const [qrMode, setQrMode] = useState<"sepay" | "standard">("sepay");
   const [qrAmountText, setQrAmountText] = useState("");
   const [qrMemoText, setQrMemoText] = useState("");
+  const [sepayImgFailed, setSepayImgFailed] = useState<string | null>(null);
+  const [sepayQrUploadMsg, setSepayQrUploadMsg] = useState<string | null>(null);
+  const sepayQrInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeAccountId = activeReal?.id ?? null;
   const activeAccountNumber = activeReal?.accountNumber ?? null;
@@ -198,8 +209,15 @@ export default function RealBankCard({
   const activeSyncMeta = activeAccountNumber ? syncMetaByAccount[activeAccountNumber] : undefined;
 
   const qrAmount = parseMoneyInput(qrAmountText);
+  const effectiveQrMemo = qrMode === "sepay" ? ensureSepayMemo(qrMemoText) : sanitizeMemo(qrMemoText);
+  const hasCustomSepayQr = Boolean(activeReal?.sepayQrPayload);
+
   const qrPayload = useMemo(() => {
     if (!qrOpen || !activeReal) return null;
+    // Nếu người dùng đã gắn ảnh QR SePay riêng và không nhập số tiền mới → dùng nguyên payload gốc từ SePay.
+    if (qrMode === "sepay" && activeReal.sepayQrPayload && qrAmount <= 0 && !qrMemoText.trim()) {
+      return activeReal.sepayQrPayload;
+    }
     try {
       return buildPayeeVietQr(
         {
@@ -208,13 +226,59 @@ export default function RealBankCard({
           accountName: activeReal.holderName,
         },
         qrAmount > 0 ? Math.round(qrAmount) : null,
-        sanitizeMemo(qrMemoText),
+        effectiveQrMemo,
       );
     } catch {
       return null;
     }
-  }, [qrOpen, activeReal, qrAmount, qrMemoText]);
+  }, [qrOpen, activeReal, qrMode, qrAmount, qrMemoText, effectiveQrMemo]);
   const qrMatrix = useQrMatrix(qrPayload ?? "");
+
+  const sepayQrImageUrl = useMemo(() => {
+    if (!qrOpen || qrMode !== "sepay" || !activeReal || !activeInstitution) return null;
+    // Khi người dùng gắn QR SePay riêng (tĩnh) và không nhập số tiền/nội dung → vẽ trực tiếp payload SePay đã gắn.
+    if (activeReal.sepayQrPayload && qrAmount <= 0 && !qrMemoText.trim()) return null;
+    return buildSepayQrImageUrl({
+      institution: activeInstitution,
+      accountNumber: activeReal.accountNumber,
+      amount: qrAmount > 0 ? Math.round(qrAmount) : null,
+      memo: qrMemoText,
+    });
+  }, [qrOpen, qrMode, activeReal, activeInstitution, qrAmount, qrMemoText]);
+
+  const handleUploadSepayQr = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !activeReal) return;
+    setSepayQrUploadMsg(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          setSepayQrUploadMsg("Không đọc được ảnh QR trên trình duyệt này.");
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const decoded = jsQR(imageData.data, imageData.width, imageData.height);
+        if (!decoded?.data || decoded.data.length < 20) {
+          setSepayQrUploadMsg("Không quét thấy mã QR hợp lệ trong ảnh. Hãy tải đúng ảnh QR từ my.sepay.vn.");
+          return;
+        }
+        updateLinkedAccountSepayQr(activeReal.id, decoded.data);
+        setQrMode("sepay");
+        setSepayQrUploadMsg("Đã gắn thành công mã QR SePay của tài khoản này!");
+      };
+      img.onerror = () => setSepayQrUploadMsg("Tệp ảnh không hợp lệ.");
+      img.src = typeof reader.result === "string" ? reader.result : "";
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmitLink = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -462,13 +526,13 @@ export default function RealBankCard({
                 </button>
               </div>
 
-              {/* Khung Mã QR nhận tiền cá nhân (VietQR chuẩn EMVCo CRC-16) */}
+              {/* Khung Mã QR nhận tiền cá nhân (Mặc định chuẩn SePay SEVQR để tự cập nhật số dư!) */}
               {qrOpen && qrPayload && (
                 <div className="rounded-2xl bg-white p-4 text-slate-900 shadow-md">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <p className="text-xs font-extrabold text-slate-900">
-                        Mã VietQR nhận tiền — {activeInstitution.shortName}
+                        {qrMode === "sepay" ? "Mã QR chuẩn SePay (SEVQR)" : "Mã VietQR thường"} — {activeInstitution.shortName}
                       </p>
                       <p className="tp-code text-[11px] text-slate-600">
                         {activeReal.accountNumber} · {activeReal.holderName}
@@ -484,10 +548,73 @@ export default function RealBankCard({
                     </button>
                   </div>
 
+                  {/* Chọn chuẩn SePay (SEVQR) hay VietQR thường */}
+                  <div className="mt-2.5 flex items-center gap-1.5 rounded-xl bg-slate-100 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setQrMode("sepay")}
+                      className={`flex-1 cursor-pointer rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                        qrMode === "sepay" ? "bg-[#a50064] text-white shadow-xs" : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      ⚡ QR SePay (tự cập nhật số dư)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQrMode("standard")}
+                      className={`flex-1 cursor-pointer rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                        qrMode === "standard" ? "bg-slate-800 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      VietQR thường
+                    </button>
+                  </div>
+
+                  {qrMode === "sepay" && (
+                    <div className="mt-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] leading-relaxed text-emerald-900">
+                      <strong>Tự động đồng bộ SePay:</strong>{" "}
+                      {activeReal.institutionCode === "ICB"
+                        ? "VietinBank bắt buộc dùng mã QR SePay (có tiền tố SEVQR trong nội dung) thì biến động mới cập nhật lên SePay & TrustPay."
+                        : "Mã QR đã tự gắn tiền tố SEVQR chuẩn SePay để mọi giao dịch chuyển vào tự động báo về SePay."}{" "}
+                      Nội dung hiện tại: <code className="font-mono font-bold text-emerald-800">{effectiveQrMemo}</code>
+                    </div>
+                  )}
+
                   <div className="mt-3 flex flex-col items-center gap-3">
                     <div className="rounded-2xl border border-slate-200 bg-white p-2">
-                      <QrCodeSvg value={qrPayload} size={184} title="Mã VietQR nhận tiền cá nhân" />
+                      {sepayQrImageUrl && sepayImgFailed !== sepayQrImageUrl ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={sepayQrImageUrl}
+                          alt={`Mã QR SePay ${activeInstitution.shortName}`}
+                          width={196}
+                          height={196}
+                          referrerPolicy="no-referrer"
+                          onError={() => setSepayImgFailed(sepayQrImageUrl)}
+                          className="h-auto w-[196px] rounded-xl object-contain"
+                        />
+                      ) : (
+                        <QrCodeSvg value={qrPayload} size={184} title="Mã VietQR nhận tiền cá nhân" />
+                      )}
                     </div>
+
+                    {hasCustomSepayQr && qrMode === "sepay" && (
+                      <div className="flex w-full items-center justify-between gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-1.5 text-[11px] text-sky-900">
+                        <span className="font-semibold">✓ Đã gắn mã QR SePay riêng của tài khoản</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateLinkedAccountSepayQr(activeReal.id, null);
+                            setSepayQrUploadMsg("Đã gỡ mã QR SePay riêng — dùng lại QR SePay tự sinh.");
+                          }}
+                          className="inline-flex cursor-pointer items-center gap-1 font-bold text-rose-600 hover:underline"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          <span>Gỡ</span>
+                        </button>
+                      </div>
+                    )}
+
                     <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
                       <input
                         value={qrAmountText}
@@ -498,21 +625,56 @@ export default function RealBankCard({
                       />
                       <input
                         value={qrMemoText}
-                        maxLength={25}
+                        maxLength={qrMode === "sepay" ? 19 : 25}
                         onChange={(e) => setQrMemoText(e.target.value)}
-                        placeholder="Lời nhắn (tùy chọn)"
+                        placeholder={qrMode === "sepay" ? "Nội dung (tự thêm SEVQR)" : "Lời nhắn (tùy chọn)"}
                         className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 focus:border-[#d82d8b] focus:bg-white focus:outline-none"
                       />
                     </div>
-                    <button
-                      type="button"
-                      disabled={!qrMatrix}
-                      onClick={handleDownloadMyQr}
-                      className="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#a50064] to-[#d82d8b] px-3 py-2 text-xs font-bold text-white hover:brightness-110 disabled:opacity-50"
+
+                    <div className="flex w-full flex-col gap-2 sm:flex-row">
+                      <button
+                        type="button"
+                        disabled={!qrMatrix}
+                        onClick={handleDownloadMyQr}
+                        className="inline-flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#a50064] to-[#d82d8b] px-3 py-2 text-xs font-bold text-white hover:brightness-110 disabled:opacity-50"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        <span>Tải ảnh QR (.PNG)</span>
+                      </button>
+
+                      <input
+                        ref={sepayQrInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleUploadSepayQr}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => sepayQrInputRef.current?.click()}
+                        className="inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                      >
+                        <Upload className="h-3.5 w-3.5 text-[#a50064]" />
+                        <span>Gắn ảnh QR SePay</span>
+                      </button>
+                    </div>
+
+                    {sepayQrUploadMsg && (
+                      <p role="status" className="w-full text-center text-[11px] font-semibold text-emerald-700">
+                        {sepayQrUploadMsg}
+                      </p>
+                    )}
+
+                    <a
+                      href="https://my.sepay.vn/qrcode"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#a50064] hover:underline"
                     >
-                      <Download className="h-3.5 w-3.5" />
-                      <span>Tải ảnh mã VietQR (.PNG)</span>
-                    </button>
+                      <ExternalLink className="h-3 w-3" />
+                      <span>Mở trang Tạo QR chính thức trên my.sepay.vn ↗</span>
+                    </a>
                   </div>
                 </div>
               )}

@@ -33,6 +33,7 @@ import {
   buildBankDeeplink,
   buildPayeeVietQr,
   buildVietQrImageUrl,
+  ensureSepayMemo,
   removeDiacritics,
   sanitizeAccountName,
   sanitizeMemo,
@@ -554,9 +555,20 @@ export default function RealPaymentHandoff({
           </dl>
 
           <label className="block">
-            <span className="mb-1 flex items-center justify-between gap-2 text-[11px] font-semibold text-slate-600">
+            <span className="mb-1 flex flex-wrap items-center justify-between gap-2 text-[11px] font-semibold text-slate-600">
               <span>{t.handoff.memo}</span>
-              <span className="font-normal text-slate-400">{t.handoff.memoHint}</span>
+              <span className="flex items-center gap-2">
+                {!/^SEVQR(?:\s|$)/i.test(memo) && (
+                  <button
+                    type="button"
+                    onClick={() => setMemo(ensureSepayMemo(memo))}
+                    className="cursor-pointer rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 hover:bg-emerald-100"
+                  >
+                    + Gắn tiền tố SEVQR (đồng bộ SePay)
+                  </button>
+                )}
+                <span className="font-normal text-slate-400">{t.handoff.memoHint}</span>
+              </span>
             </span>
             <input
               value={memo}
@@ -565,6 +577,11 @@ export default function RealPaymentHandoff({
               onChange={(event) => setMemo(cleanMemoInput(event.target.value))}
               className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 font-mono text-sm text-slate-900 focus:border-[#d82d8b] focus:bg-white focus:ring-4 focus:ring-pink-100 focus:outline-none"
             />
+            {institution.code === "ICB" && !/^SEVQR(?:\s|$)/i.test(memo) && (
+              <p className="mt-1 text-[10px] font-medium text-amber-700">
+                💡 VietinBank: bấm <strong>+ Gắn tiền tố SEVQR</strong> nếu người nhận dùng SePay để biến động tự cập nhật.
+              </p>
+            )}
           </label>
 
           <label className="block">

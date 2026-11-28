@@ -317,6 +317,27 @@ export default function BankSyncModal({ account, onClose, onSynced }: BankSyncMo
 
         {/* Body */}
         <div className="max-h-[82vh] space-y-4 overflow-y-auto px-5 py-4">
+          {/* LƯU Ý BẮT BUỘC VỀ MÃ QR SEPAY (SEVQR) — đặc biệt cho VietinBank */}
+          <div className="rounded-2xl border border-[rgba(251,191,36,0.45)] bg-[rgba(245,158,11,0.12)] p-3.5 text-[#FEF3C7]">
+            <p className="text-xs font-extrabold text-[#FDE68A]">
+              ⚠️ Quan trọng{account.institutionCode === "ICB" ? " cho VietinBank" : ""}: Phải dùng Mã QR SePay (có tiền tố SEVQR)
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-[#FEF3C7]">
+              Chuyển tiền bằng mã QR thường của app ngân hàng sẽ <strong>không tự báo về SePay</strong>. Khi nhận hoặc nạp
+              tiền vào tài khoản này, hãy bấm nút <strong>“Mã QR nhận tiền của tôi”</strong> ngay trên thẻ ngân hàng —
+              TrustPay đã tự sinh sẵn <strong>Mã QR chuẩn SePay (SEVQR)</strong> và cho phép tải lên ảnh QR từ{" "}
+              <a
+                href="https://my.sepay.vn/qrcode"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold text-[#38BDF8] underline"
+              >
+                my.sepay.vn/qrcode ↗
+              </a>
+              .
+            </p>
+          </div>
+
           {/* CÁCH NHANH NHẤT: Kéo số dư thật trực tiếp từ SePay API (không cần đợi giao dịch mới) */}
           <div className="space-y-2.5 rounded-2xl border border-[rgba(56,189,248,0.4)] bg-[rgba(14,165,233,0.12)] p-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2">

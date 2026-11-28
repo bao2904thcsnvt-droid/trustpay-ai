@@ -98,8 +98,8 @@ const viCore = {
   common: {
     appName: "TrustPay AI",
     awsBadge: "AWS Serverless Powered",
-    demoAccount: "Tài khoản Demo • Ban Giám Khảo",
-    ownerName: "Ban Giám Khảo (Tài khoản Demo)",
+    demoAccount: "Chưa liên kết ngân hàng",
+    ownerName: "Chủ tài khoản TrustPay AI",
     close: "Đóng",
     dismiss: "Đóng thông báo",
     perMonth: "/tháng",
@@ -648,8 +648,8 @@ const enCore: Omit<
   common: {
     appName: "TrustPay AI",
     awsBadge: "AWS Serverless Powered",
-    demoAccount: "Demo account • Judges",
-    ownerName: "Judge (Demo account)",
+    demoAccount: "No bank linked yet",
+    ownerName: "TrustPay AI Account Holder",
     close: "Close",
     dismiss: "Dismiss notification",
     perMonth: "/month",

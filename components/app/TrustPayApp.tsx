@@ -15,8 +15,9 @@ import type {
 } from "@/types/trustpay";
 import { DEMO_SCENARIOS } from "@/lib/mock-scenarios";
 import { decideBiometric, type BiometricDecision } from "@/lib/compliance/biometric-policy";
+import { createDefaultWalletState } from "@/lib/wallet/defaults";
 import { useWalletState, walletStore } from "@/lib/wallet/wallet-store";
-import { setTourCollapsed, usePreferences } from "@/lib/preferences/preferences-store";
+import { setDemoMode, setTourCollapsed, usePreferences } from "@/lib/preferences/preferences-store";
 import {
   addBlacklistEntries,
   addSubscription,
@@ -29,6 +30,7 @@ import {
   markEvidenceRedacted,
   patchTransaction,
   reallocateBudget,
+  recordRealTransfer,
   setSubscriptionUsage,
   updateGuardian,
   updateTicket,
@@ -116,6 +118,9 @@ import type { SdkEventRecord } from "@/components/sdk/SdkEventInspector";
 // Ẩn số dư, Khóa sinh trắc học thiết bị, Chia tiền nhóm, Nhờ AI kiểm tra giúp, PWA.
 import { buildTransferCommand } from "@/lib/copilot/payment-copilot";
 import {
+  createDefaultHubState,
+  createRealHubState,
+  deductLinkedAccountReferenceBalance,
   hubStore,
   isTrustedPayeeSaved,
   setBalanceHidden,
@@ -130,7 +135,7 @@ import { buildPasteCommand, isPasteComplete, parsePaymentMessage, type PasteFiel
 import { appLockSession, QR_UNLOCK_WINDOW_MS, useUnlockedAt } from "@/lib/security/app-lock";
 import type { PasteSummary } from "@/components/user-wallet/TransactionInputPanel";
 import EasyHome, { type EasyPanel } from "@/components/hub/EasyHome";
-import LinkedAccountsBar, { linkedAccountLabel } from "@/components/hub/LinkedAccountsBar";
+import LinkedAccountsBar from "@/components/hub/LinkedAccountsBar";
 import TrustedPayees from "@/components/hub/TrustedPayees";
 import SplitBill from "@/components/hub/SplitBill";
 import AiCheckHelper from "@/components/hub/AiCheckHelper";
@@ -754,21 +759,32 @@ export default function TrustPayApp() {
     }
   };
 
-  const handleConfirmTransfer = () => {
+  const handleConfirmTransfer = (overrideAmount?: number, options?: { receiptOcr?: boolean }) => {
     if (!transfer || transfer.status !== "idle") return;
     if (transfer.requireBiometric && !transfer.biometricVerified) return;
 
     const session = transfer;
     const snapshot = walletStore.getSnapshot();
-    const amount = session.analysis.parsedAmount;
-    if (amount <= 0 || amount > snapshot.balance) {
+    const isDemo = preferencesStore.getSnapshot().demoMode;
+    const amount =
+      typeof overrideAmount === "number" && Number.isFinite(overrideAmount) && overrideAmount > 0
+        ? Math.round(overrideAmount)
+        : session.analysis.parsedAmount;
+
+    if (amount <= 0 || (isDemo && amount > snapshot.balance)) {
       showToast({ type: "warning", title: t.toast.insufficient, description: t.toast.insufficientDesc });
       return;
     }
 
     const nowMs = Date.now();
     const isRisky = session.analysis.scamReport.riskLevel !== "LOW";
-    const note = session.historyId ? FACE_VERIFIED_NOTE : session.requireBiometric ? POLICY_NOTE : undefined;
+    const baseNote = session.historyId ? FACE_VERIFIED_NOTE : session.requireBiometric ? POLICY_NOTE : undefined;
+    const note = options?.receiptOcr
+      ? `${baseNote ? `${baseNote} · ` : ""}Xác nhận biên lai chuyển khoản thật (OCR)`
+      : !isDemo
+        ? `${baseNote ? `${baseNote} · ` : ""}Xác nhận đã chuyển xong trên App Ngân hàng`
+        : baseNote;
+
     const tx: WalletTransaction = {
       id: session.historyId ?? createClientId("TXN"),
       timestamp: nowIso(nowMs),
@@ -783,7 +799,23 @@ export default function TrustPayApp() {
       ...(note ? { note } : {}),
     };
 
-    walletStore.setState((state) => applyDebit(state, tx));
+    walletStore.setState((state) => (isDemo ? applyDebit(state, tx) : recordRealTransfer(state, tx)));
+    if (!isDemo) {
+      const hubSnap = hubStore.getSnapshot();
+      const sourceAcc =
+        hubSnap.linkedAccounts.find((acc) => acc.id === hubSnap.defaultSourceId && !acc.demo && acc.accountNumber !== "") ??
+        hubSnap.linkedAccounts.find((acc) => !acc.demo && acc.accountNumber !== "");
+      if (sourceAcc) {
+        deductLinkedAccountReferenceBalance(sourceAcc.id, amount);
+      }
+      recordAudit("REAL_TRANSFER", {
+        amountBand: amountBand(amount),
+        category: session.category,
+        receiptOcr: Boolean(options?.receiptOcr),
+        bankCode: session.payee?.institutionCode ?? "EXTERNAL",
+        riskLevel: session.analysis.scamReport.riskLevel,
+      });
+    }
     setTransfer((prev) => (prev && prev.id === session.id ? { ...prev, status: "completed" } : prev));
     emitSessionDecision(
       session,
@@ -1247,10 +1279,11 @@ export default function TrustPayApp() {
 
   const handleQrPay = (check: QrCheckResult): boolean => {
     const snapshot = walletStore.getSnapshot();
+    const isDemo = preferencesStore.getSnapshot().demoMode;
     if (
       check.verdict === "DANGER" ||
       check.amount <= 0 ||
-      check.amount > snapshot.balance ||
+      (isDemo && check.amount > snapshot.balance) ||
       (check.policy.requireBiometric && qrVerifiedCheckId !== check.id)
     ) {
       return false;
@@ -1269,7 +1302,22 @@ export default function TrustPayApp() {
       status: "COMPLETED",
       note: QR_DATA_TEXT.paidNote,
     };
-    walletStore.setState((state) => applyDebit(state, tx));
+    walletStore.setState((state) => (isDemo ? applyDebit(state, tx) : recordRealTransfer(state, tx)));
+    if (!isDemo) {
+      const hubSnap = hubStore.getSnapshot();
+      const sourceAcc =
+        hubSnap.linkedAccounts.find((acc) => acc.id === hubSnap.defaultSourceId && !acc.demo && acc.accountNumber !== "") ??
+        hubSnap.linkedAccounts.find((acc) => !acc.demo && acc.accountNumber !== "");
+      if (sourceAcc) {
+        deductLinkedAccountReferenceBalance(sourceAcc.id, check.amount);
+      }
+      recordAudit("REAL_TRANSFER", {
+        amountBand: amountBand(check.amount),
+        category: check.category,
+        channel: "QR",
+        riskLevel: check.finalLevel,
+      });
+    }
     const decodedQr = check.report.decoded;
     emitDecision({
       event: "onTransferConfirm",
@@ -1937,8 +1985,42 @@ export default function TrustPayApp() {
 
   // --------------------------------------------- header, onboarding & tour
 
+  const handleToggleDemoMode = (enabled: boolean) => {
+    setDemoMode(enabled);
+    if (enabled) {
+      const keepMode = hubStore.getSnapshot().uiMode;
+      walletStore.setState(() => createDefaultWalletState());
+      hubStore.setState(() => ({ ...createDefaultHubState(), uiMode: keepMode }));
+      showToast({
+        type: "info",
+        title: "Đã bật Chế độ dữ liệu mẫu",
+        description: "Nạp dữ liệu ví & tài khoản mẫu để kiểm thử. Tắt công tắc này bất cứ lúc nào để về chế độ Tiền thật.",
+      });
+    } else {
+      walletStore.reset();
+      hubStore.setState((prev) => {
+        const realAccs = prev.linkedAccounts.filter((acc) => !acc.demo && acc.accountNumber !== "");
+        const realPayees = prev.trustedPayees.filter((payee) => !payee.demo);
+        const realState = createRealHubState();
+        return {
+          ...realState,
+          uiMode: prev.uiMode,
+          linkedAccounts: realAccs,
+          defaultSourceId: realAccs[0]?.id ?? "",
+          trustedPayees: realPayees,
+        };
+      });
+      showToast({
+        type: "success",
+        title: "Đã trở về Chế độ Tiền thật (Non-Custodial)",
+        description: "Toàn bộ dữ liệu mẫu đã được gỡ bỏ; chi tiêu khởi điểm 0đ.",
+      });
+    }
+  };
+
   const handleReset = () => {
     resetEpochRef.current += 1;
+    setDemoMode(false);
     walletStore.reset();
     featureStore.reset();
     // Vòng 7: xóa chuỗi Audit, kết quả AI Agent / Edge ML và bộ ghi hành vi.
@@ -2074,10 +2156,22 @@ export default function TrustPayApp() {
       : null;
 
   // Vòng 4 — Easy/Pro (chế độ nhúng SDK luôn ưu tiên), nguồn tiền mặc định, khóa sinh trắc học, người nhận mẫu.
+  const nonCustodial = !prefs.demoMode;
   const easyMode = hub.uiMode === "easy" && !embedMode;
+  const realAccounts = hub.linkedAccounts.filter((account) => !account.demo && account.accountNumber !== "");
+  const activeRealAccount =
+    realAccounts.find((account) => account.id === hub.defaultSourceId) ?? realAccounts[0] ?? null;
+  const isBankLinked = activeRealAccount !== null;
   const defaultSource =
     hub.linkedAccounts.find((account) => account.id === hub.defaultSourceId) ?? hub.linkedAccounts[0];
-  const sourceLabel = defaultSource ? linkedAccountLabel(defaultSource, t.hub.masked) : "";
+  const accountStatus = prefs.demoMode
+    ? "Chế độ dữ liệu mẫu (Demo)"
+    : activeRealAccount
+      ? `Đã liên kết • ${findInstitution(activeRealAccount.institutionCode)?.shortName ?? activeRealAccount.institutionCode} ••••${activeRealAccount.last4}`
+      : "Chưa liên kết ngân hàng";
+  const ownerDisplayName = activeRealAccount?.holderName || (prefs.demoMode ? "Demo" : "Bạn");
+  const totalMonthlySpent = wallet.budgets.reduce((sum, b) => sum + b.spent, 0);
+  const totalMonthlyLimit = wallet.budgets.reduce((sum, b) => sum + b.limit, 0);
   const lockEnabled = hub.appLock.enabled;
   const appLocked = lockEnabled && unlockedAt === null;
   const qrUnlockFresh = unlockedAt !== null && expiredUnlockAt !== unlockedAt;
@@ -2140,7 +2234,7 @@ export default function TrustPayApp() {
       isAnalyzing={isAnalyzing}
       transactionStatus={transfer?.status ?? "idle"}
       biometricVerified={transfer?.biometricVerified ?? false}
-      onConfirmTransfer={handleConfirmTransfer}
+      onConfirmTransfer={() => handleConfirmTransfer()}
       onRequestBiometric={handleRequestTransferBiometric}
       onCancelTransaction={handleCancelTransfer}
       trace={transfer?.trace ?? null}
@@ -2154,6 +2248,7 @@ export default function TrustPayApp() {
       onDownloadReport={handleDownloadReport}
       reportReady={Boolean(transfer?.reportText)}
       guardianName={wallet.guardian.name}
+      nonCustodial={nonCustodial}
     />
     {promaxPanels}
     </>
@@ -2181,6 +2276,14 @@ export default function TrustPayApp() {
         onRequestUnlock={() => setQrGateOpen(true)}
         preferredPayerApp={defaultSource?.institutionCode ?? null}
         samplePayee={samplePayee}
+        confirmed={transfer?.status === "completed"}
+        onConfirmRealTransfer={
+          transfer && transfer.status === "idle"
+            ? (confirmedAmount, opts) => handleConfirmTransfer(confirmedAmount, opts)
+            : transfer?.status === "completed"
+              ? () => {}
+              : undefined
+        }
       />
       {showSavePayee && sessionPayee && (
         <SaveTrustedPayeeCta
@@ -2214,6 +2317,7 @@ export default function TrustPayApp() {
         externalPayload={qrExternal}
         onExternalPayloadHandled={() => setQrExternal(null)}
         onRealTransfer={handleQrRealTransfer}
+        nonCustodial={nonCustodial}
       />
     </div>
   );
@@ -2303,12 +2407,21 @@ export default function TrustPayApp() {
             balance={wallet.balance}
             balanceHidden={hub.balanceHidden}
             onToggleBalance={handleToggleBalance}
-            sourceLabel={sourceLabel}
+            accounts={hub.linkedAccounts}
+            defaultSourceId={hub.defaultSourceId}
+            demoMode={prefs.demoMode}
+            ownerDisplayName={ownerDisplayName}
             dailyOutflow={dailyOutflow}
             budgets={wallet.budgets}
             pendingAlertsCount={pendingAlertsCount}
             lastVerdict={investigation ? { score: investigation.finalScore, level: investigation.finalLevel } : null}
             onAction={handleHomeAction}
+            onAccountLinked={(label) =>
+              showToast({ type: "success", title: t.toastR4.accountAdded(label), description: t.toastR4.accountAddedDesc })
+            }
+            onSourceChanged={(label) =>
+              showToast({ type: "success", title: t.toastR4.sourceChanged(label), description: t.toastR4.sourceChangedDesc })
+            }
           >
             <WalletSidebar
               sections={["guardian"]}
@@ -2330,6 +2443,7 @@ export default function TrustPayApp() {
             defaultSourceId={hub.defaultSourceId}
             balance={wallet.balance}
             balanceHidden={hub.balanceHidden}
+            nonCustodial={nonCustodial}
             tab={xferTab}
             onTabChange={setXferTab}
             onWithdraw={handleWithdraw}
@@ -2531,6 +2645,10 @@ export default function TrustPayApp() {
           onAppInstalled={() =>
             showToast({ type: "success", title: t.toastR4.installed, description: t.toastR4.installedDesc })
           }
+          accountStatus={accountStatus}
+          isBankLinked={isBankLinked}
+          demoMode={prefs.demoMode}
+          onToggleDemoMode={handleToggleDemoMode}
         />
       ) : (
         <AppHeader
@@ -2550,6 +2668,10 @@ export default function TrustPayApp() {
             showToast({ type: "success", title: t.toastR4.installed, description: t.toastR4.installedDesc })
           }
           onLogoClick={embedMode ? undefined : handleReturnToHero}
+          accountStatus={accountStatus}
+          isBankLinked={isBankLinked}
+          demoMode={prefs.demoMode}
+          onToggleDemoMode={handleToggleDemoMode}
         />
       )}
 
@@ -2566,7 +2688,18 @@ export default function TrustPayApp() {
             balance={wallet.balance}
             balanceHidden={hub.balanceHidden}
             onToggleBalance={handleToggleBalance}
-            sourceLabel={sourceLabel}
+            accounts={hub.linkedAccounts}
+            defaultSourceId={hub.defaultSourceId}
+            dailyOutflow={dailyOutflow}
+            monthlySpent={totalMonthlySpent}
+            monthlyLimit={totalMonthlyLimit}
+            demoMode={prefs.demoMode}
+            onAccountLinked={(label) =>
+              showToast({ type: "success", title: t.toastR4.accountAdded(label), description: t.toastR4.accountAddedDesc })
+            }
+            onSourceChanged={(label) =>
+              showToast({ type: "success", title: t.toastR4.sourceChanged(label), description: t.toastR4.sourceChangedDesc })
+            }
             panel={easyPanel}
             onSelectPanel={handleEasySelect}
             onBack={handleEasyBack}
@@ -2650,6 +2783,19 @@ export default function TrustPayApp() {
               guardianHighlighted={highlightTarget === "tp-guardian-card"}
               balanceHidden={hub.balanceHidden}
               onToggleBalance={handleToggleBalance}
+              linkedAccounts={hub.linkedAccounts}
+              defaultSourceId={hub.defaultSourceId}
+              demoMode={prefs.demoMode}
+              onStartTransfer={() => {
+                setActiveAgent("transfer");
+                focusArea("tp-transfer-panel");
+              }}
+              onAccountLinked={(label) =>
+                showToast({ type: "success", title: t.toastR4.accountAdded(label), description: t.toastR4.accountAddedDesc })
+              }
+              onSourceChanged={(label) =>
+                showToast({ type: "success", title: t.toastR4.sourceChanged(label), description: t.toastR4.sourceChangedDesc })
+              }
             />
             <BankVaultManager
               sectionId="tp-bank-vault"

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import {
   AlertTriangle,
   Bell,
@@ -10,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Compass,
+  FileCheck2,
   Gauge,
   Menu,
   Monitor,
@@ -48,6 +50,11 @@ export interface MobileAppBarProps {
   onOpenOnboarding: () => void;
   onReset: () => void;
   onAppInstalled: () => void;
+  /** Trạng thái liên kết ngân hàng thật trên thanh trên cùng. */
+  accountStatus?: string;
+  isBankLinked?: boolean;
+  demoMode?: boolean;
+  onToggleDemoMode?: (enabled: boolean) => void;
 }
 
 /**
@@ -72,6 +79,10 @@ export default function MobileAppBar({
   onOpenOnboarding,
   onReset,
   onAppInstalled,
+  accountStatus,
+  isBankLinked = false,
+  demoMode = false,
+  onToggleDemoMode,
 }: MobileAppBarProps) {
   const { t } = useI18n();
   const theme = useResolvedTheme();
@@ -241,6 +252,39 @@ export default function MobileAppBar({
                   <InstallAppButton onInstalled={onAppInstalled} />
                 </div>
               )}
+              <Link href="/privacy" onClick={() => setOpen(false)} className={item}>
+                <FileCheck2 className="h-5 w-5 shrink-0 text-sky-600" />
+                <span className="min-w-0 flex-1">Chính sách dữ liệu (NĐ 13/2023)</span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+              </Link>
+              {onToggleDemoMode && (
+                <div className="flex min-h-12 items-center justify-between gap-3 px-3 py-1.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-700">Chế độ dữ liệu mẫu</p>
+                    <p className="text-[11px] text-slate-500">
+                      {demoMode ? "Đang bật dữ liệu kiểm thử" : "Tắt — Đang dùng tiền thật"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={demoMode}
+                    onClick={() => {
+                      setOpen(false);
+                      onToggleDemoMode(!demoMode);
+                    }}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors ${
+                      demoMode ? "bg-amber-500" : "bg-slate-300"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
+                        demoMode ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+              )}
             </div>
 
             <button
@@ -273,7 +317,15 @@ export default function MobileAppBar({
   const titleBlock = (
     <span className="min-w-0">
       <span className="block truncate text-[17px] leading-tight font-bold text-slate-900">{title}</span>
-      <span className="block truncate text-xs leading-tight text-slate-500">{t.app.subtitle}</span>
+      <span className="inline-flex max-w-full items-center gap-1.5 truncate text-xs leading-tight text-slate-500">
+        <span
+          aria-hidden="true"
+          className={`h-2 w-2 shrink-0 rounded-full ${
+            demoMode ? "bg-amber-400" : isBankLinked ? "bg-emerald-500" : "bg-slate-400"
+          }`}
+        />
+        <span className="truncate">{accountStatus || "Chưa liên kết ngân hàng"}</span>
+      </span>
     </span>
   );
 

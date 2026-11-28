@@ -1,8 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent } from "react";
 import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ChangeEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
+import {
+  Camera,
   Check,
+  CheckCircle2,
   ChevronDown,
   Contact,
   Copy,
@@ -10,12 +20,14 @@ import {
   ExternalLink,
   Fingerprint,
   Landmark,
+  Loader2,
   Lock,
   QrCode,
   ShieldCheck,
   Smartphone,
   WifiOff,
 } from "lucide-react";
+import type { TransactionAnalysisResponse } from "@/types/trustpay";
 import { findInstitution, PAYER_BANK_APPS, type PayeeInstitutionCode } from "@/lib/payments/banks";
 import {
   buildBankDeeplink,
@@ -28,6 +40,7 @@ import {
   type PayeeDetails,
 } from "@/lib/payments/vietqr-builder";
 import { decodeVietQr } from "@/lib/qr/vietqr-inspector";
+import { parseMoneyInput } from "@/lib/wallet/format";
 import { useI18n } from "@/components/i18n/I18nProvider";
 import QrCodeSvg, { downloadQrPng, useQrMatrix } from "@/components/payments/QrCodeSvg";
 
@@ -54,6 +67,10 @@ export interface RealPaymentHandoffProps {
   preferredPayerApp?: PayeeInstitutionCode | null;
   /** Vòng 4: người nhận MẪU trong Danh bạ Tin cậy (STK minh họa) → không tạo mã chuyển tiền thật. */
   samplePayee?: boolean;
+  /** Giao dịch thật này đã được người dùng xác nhận chuyển xong trên App Ngân hàng. */
+  confirmed?: boolean;
+  /** Ghi nhận giao dịch thật vào lịch sử, lũy kế ngày TT 50 NHNN, thống kê tháng & chuỗi SHA-256. */
+  onConfirmRealTransfer?: (confirmedAmount: number, options?: { receiptOcr?: boolean }) => void;
 }
 
 const QR_SIZE = 220;
@@ -133,6 +150,8 @@ export default function RealPaymentHandoff({
   onRequestUnlock,
   preferredPayerApp = null,
   samplePayee = false,
+  confirmed = false,
+  onConfirmRealTransfer,
 }: RealPaymentHandoffProps) {
   const { t, money } = useI18n();
   const institution = payee ? findInstitution(payee.institutionCode) : undefined;
@@ -151,6 +170,10 @@ export default function RealPaymentHandoff({
   const [desktopNote, setDesktopNote] = useState(false);
   const [momoGuideOpen, setMomoGuideOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [ocrScanning, setOcrScanning] = useState(false);
+  const [ocrAmountText, setOcrAmountText] = useState<string | null>(null);
+  const [ocrNotice, setOcrNotice] = useState<string | null>(null);
+  const receiptInputRef = useRef<HTMLInputElement | null>(null);
   const loadedRef = useRef<string | null>(null);
   const copiedTimerRef = useRef<number | null>(null);
   // Vòng 4: đã mở khóa và hiện mã cho phiên này (component remount theo phiên) → giữ mã, không ẩn
@@ -357,6 +380,55 @@ export default function RealPaymentHandoff({
       onPngSaved();
     }
   };
+
+  const handleReceiptUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setOcrScanning(true);
+    setOcrNotice(null);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const imageBase64 = typeof reader.result === "string" ? reader.result : "";
+      if (!imageBase64) {
+        setOcrScanning(false);
+        return;
+      }
+      try {
+        const res = await fetch("/api/analyze", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ commandText: "", imageBase64 }),
+        });
+        if (res.ok) {
+          const parsed = (await res.json()) as TransactionAnalysisResponse;
+          if (parsed.parsedAmount > 0) {
+            setOcrAmountText(String(parsed.parsedAmount));
+            setOcrNotice(`OCR đọc được số tiền biên lai: ${money(parsed.parsedAmount)}. Kiểm tra rồi bấm xác nhận.`);
+          } else {
+            setOcrAmountText(qrAmount !== null ? String(qrAmount) : "");
+            setOcrNotice("Đã tải ảnh biên lai — vui lòng kiểm tra lại số tiền thực chuyển rồi bấm xác nhận.");
+          }
+        } else {
+          setOcrAmountText(qrAmount !== null ? String(qrAmount) : "");
+          setOcrNotice("Đã tải ảnh biên lai — vui lòng kiểm tra lại số tiền rồi bấm xác nhận.");
+        }
+      } catch {
+        setOcrAmountText(qrAmount !== null ? String(qrAmount) : "");
+        setOcrNotice("Đã tải ảnh biên lai — vui lòng kiểm tra lại số tiền rồi bấm xác nhận.");
+      } finally {
+        setOcrScanning(false);
+      }
+    };
+    reader.onerror = () => {
+      setOcrScanning(false);
+      setOcrNotice("Không đọc được tệp ảnh biên lai. Bạn vẫn có thể bấm xác nhận trực tiếp.");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const effectiveConfirmAmount =
+    ocrAmountText !== null ? parseMoneyInput(ocrAmountText) : qrAmount ?? 0;
 
   const buttonBase =
     "inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition-all";
@@ -598,6 +670,81 @@ export default function RealPaymentHandoff({
               )}
             </div>
           </details>
+
+          {/* Bước chốt tiền thật: xác nhận đã chuyển xong trên App Ngân hàng (hoặc OCR biên lai thật) */}
+          {onConfirmRealTransfer && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3.5">
+              {confirmed ? (
+                <div className="flex items-start gap-2.5 text-emerald-900">
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-extrabold">Đã xác nhận hoàn tất giao dịch tiền thật</p>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-emerald-800">
+                      Đã ghi vào lịch sử giao dịch thật, cộng Lũy kế chi hôm nay (TT 50 NHNN), thống kê chi tiêu tháng và
+                      niêm phong vào chuỗi kiểm toán SHA-256.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  <p className="text-xs font-bold text-emerald-900">
+                    Sau khi chuyển xong trên App Ngân hàng / MoMo:
+                  </p>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      disabled={effectiveConfirmAmount <= 0}
+                      onClick={() =>
+                        onConfirmRealTransfer(effectiveConfirmAmount, { receiptOcr: ocrAmountText !== null })
+                      }
+                      className="inline-flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3.5 py-2.5 text-xs font-extrabold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      <span>
+                        Xác nhận đã chuyển xong trên App Ngân hàng
+                        {effectiveConfirmAmount > 0 ? ` (${money(effectiveConfirmAmount)})` : ""}
+                      </span>
+                    </button>
+                    <input
+                      ref={receiptInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleReceiptUpload}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      disabled={ocrScanning}
+                      onClick={() => receiptInputRef.current?.click()}
+                      className="inline-flex min-h-11 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {ocrScanning ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Camera className="h-4 w-4 shrink-0" />
+                      )}
+                      <span>{ocrScanning ? "Đang đọc biên lai…" : "Tải biên lai OCR"}</span>
+                    </button>
+                  </div>
+
+                  {ocrAmountText !== null && (
+                    <div className="space-y-1.5 rounded-xl border border-emerald-200 bg-white p-2.5">
+                      {ocrNotice && <p className="text-[11px] font-medium text-emerald-800">{ocrNotice}</p>}
+                      <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700">
+                        <span className="shrink-0">Số tiền thực chuyển (VNĐ):</span>
+                        <input
+                          value={ocrAmountText}
+                          inputMode="numeric"
+                          onChange={(e) => setOcrAmountText(e.target.value)}
+                          className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 font-mono text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none"
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <p className="text-[11px] font-semibold text-amber-700">{t.handoff.realMoneyWarning}</p>
         </div>

@@ -17,7 +17,7 @@ import { sha256HexSync } from "@/lib/crypto/sha256";
  * vòng 9 được điền mặc định (CHECKING / WALLET, chưa xác thực, chưa có tài khoản nhận mặc định).
  */
 
-export const HUB_STORAGE_KEY = "trustpay-ai.hub.v1";
+export const HUB_STORAGE_KEY = "trustpay-ai.hub.v2";
 export const MAX_LINKED_ACCOUNTS = 12;
 export const MAX_TRUSTED_PAYEES = 30;
 export const DEFAULT_APP_PIN = "123456";
@@ -61,13 +61,16 @@ export interface LinkedAccount {
   /** Thời điểm xác thực chính chủ (ISO 8601) — `null`: chưa xác thực. */
   verifiedAt?: string | null;
   verifyMethod?: LinkedAccountVerifyMethod | null;
+  /** Số dư tham chiếu do người dùng tự nhập (`null`: quản lý trực tiếp trên App Ngân hàng). */
+  referenceBalance?: number | null;
 }
 
-/** Tài khoản đã qua `sanitize` trong store — luôn đủ các trường vòng 9. */
+/** Tài khoản đã qua `sanitize` trong store — luôn đủ các trường vòng 9 + số dư tham chiếu. */
 export interface StoredLinkedAccount extends LinkedAccount {
   accountType: LinkedAccountType;
   verifiedAt: string | null;
   verifyMethod: LinkedAccountVerifyMethod | null;
+  referenceBalance: number | null;
 }
 
 /** Tham số tùy chọn khi thêm / hoàn thiện tài khoản (nơi gọi cũ bỏ qua được). */
@@ -151,6 +154,7 @@ function demoAccount(id: string, institutionCode: PayeeInstitutionCode, last4: s
     accountType: defaultAccountType(institutionCode),
     verifiedAt: null,
     verifyMethod: null,
+    referenceBalance: null,
   };
 }
 
@@ -219,6 +223,28 @@ export function createDefaultHubState(): HubState {
   };
 }
 
+/**
+ * Trạng thái Hub khởi tạo mặc định cho chế độ Tiền Thật (Non-Custodial):
+ * chưa liên kết ngân hàng nào, không có tài khoản hay danh bạ mẫu.
+ */
+export function createRealHubState(): HubState {
+  return {
+    schemaVersion: 1,
+    uiMode: "pro",
+    balanceHidden: false,
+    linkedAccounts: [],
+    defaultSourceId: "",
+    defaultReceiveId: null,
+    trustedPayees: [],
+    appLock: {
+      enabled: false,
+      passkeyId: null,
+      pinSalt: DEFAULT_PIN_SALT,
+      pinHash: hashPin(DEFAULT_APP_PIN, DEFAULT_PIN_SALT),
+    },
+  };
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
@@ -250,6 +276,9 @@ function sanitizeLinkedAccount(raw: unknown): StoredLinkedAccount | null {
   const verifyMethod = safeVerifyMethod(record.verifyMethod);
   const verifiedAt = safeIso(record.verifiedAt);
   const verified = Boolean(validAccount && verifyMethod && verifiedAt);
+  const refBalRaw = record.referenceBalance;
+  const referenceBalance =
+    typeof refBalRaw === "number" && Number.isFinite(refBalRaw) && refBalRaw >= 0 ? Math.round(refBalRaw) : null;
   return {
     id,
     institutionCode: record.institutionCode,
@@ -260,6 +289,7 @@ function sanitizeLinkedAccount(raw: unknown): StoredLinkedAccount | null {
     accountType: resolveAccountType(record.institutionCode, record.accountType),
     verifiedAt: verified ? verifiedAt : null,
     verifyMethod: verified ? verifyMethod : null,
+    referenceBalance,
   };
 }
 
@@ -340,10 +370,58 @@ export function sanitizeHubState(raw: unknown): HubState {
   };
 }
 
+/** Làm sạch trạng thái Hub cho chế độ Tiền Thật: cho phép danh sách ngân hàng liên kết rỗng. */
+export function sanitizeRealHubState(raw: unknown): HubState {
+  const defaults = createRealHubState();
+  const record = asRecord(raw);
+  if (!record) return defaults;
+
+  const accounts = Array.isArray(record.linkedAccounts)
+    ? record.linkedAccounts
+        .map(sanitizeLinkedAccount)
+        .filter((item): item is StoredLinkedAccount => item !== null)
+        .filter((item, index, list) => list.findIndex((other) => other.id === item.id) === index)
+        .slice(0, MAX_LINKED_ACCOUNTS)
+    : [];
+  const defaultSourceId =
+    typeof record.defaultSourceId === "string" && accounts.some((item) => item.id === record.defaultSourceId)
+      ? record.defaultSourceId
+      : accounts[0]?.id ?? "";
+
+  const trustedPayees = Array.isArray(record.trustedPayees)
+    ? record.trustedPayees
+        .map(sanitizeTrustedPayee)
+        .filter((item): item is TrustedPayee => item !== null)
+        .filter((item, index, list) => list.findIndex((other) => other.id === item.id) === index)
+        .slice(0, MAX_TRUSTED_PAYEES)
+    : [];
+
+  const lock = asRecord(record.appLock);
+  const pinSalt =
+    lock && typeof lock.pinSalt === "string" && /^[A-Za-z0-9_-]{4,64}$/.test(lock.pinSalt) ? lock.pinSalt : DEFAULT_PIN_SALT;
+  const pinHash =
+    lock && typeof lock.pinHash === "string" && /^[0-9a-f]{64}$/.test(lock.pinHash)
+      ? lock.pinHash
+      : hashPin(DEFAULT_APP_PIN, pinSalt);
+  const passkeyId =
+    lock && typeof lock.passkeyId === "string" && /^[A-Za-z0-9_-]{8,1024}$/.test(lock.passkeyId) ? lock.passkeyId : null;
+
+  return {
+    schemaVersion: 1,
+    uiMode: record.uiMode === "easy" ? "easy" : "pro",
+    balanceHidden: record.balanceHidden === true,
+    linkedAccounts: accounts,
+    defaultSourceId,
+    defaultReceiveId: resolveDefaultReceiveId(record.defaultReceiveId, accounts),
+    trustedPayees,
+    appLock: { enabled: lock?.enabled === true, passkeyId, pinSalt, pinHash },
+  };
+}
+
 export const hubStore = createPersistentStore<HubState>({
   storageKey: HUB_STORAGE_KEY,
-  createDefault: createDefaultHubState,
-  sanitize: sanitizeHubState,
+  createDefault: createRealHubState,
+  sanitize: sanitizeRealHubState,
 });
 
 export function useHubState(): HubState {
@@ -415,7 +493,7 @@ export function addLinkedAccount(account: LinkedAccount, makeDefault: boolean, o
     return {
       ...prev,
       linkedAccounts: [...prev.linkedAccounts, clean],
-      defaultSourceId: makeDefault ? clean.id : prev.defaultSourceId,
+      defaultSourceId: makeDefault || !prev.defaultSourceId ? clean.id : prev.defaultSourceId,
     };
   });
   return resultId;
@@ -462,15 +540,49 @@ export function completeLinkedAccount(
   return applied;
 }
 
-/** Gỡ liên kết (luôn giữ ít nhất 1 tài khoản); dọn nguồn chuyển & tài khoản nhận mặc định. Trả về `true` nếu đã gỡ. */
+/** Cập nhật số dư tham chiếu của một tài khoản liên kết (`null` = quản lý trực tiếp trên App Ngân hàng). */
+export function updateLinkedAccountBalance(id: string, referenceBalance: number | null): void {
+  const clean =
+    typeof referenceBalance === "number" && Number.isFinite(referenceBalance) && referenceBalance >= 0
+      ? Math.round(referenceBalance)
+      : null;
+  hubStore.setState((prev) => {
+    if (!prev.linkedAccounts.some((item) => item.id === id)) return prev;
+    return {
+      ...prev,
+      linkedAccounts: prev.linkedAccounts.map((item) =>
+        item.id === id ? { ...item, referenceBalance: clean } : item,
+      ),
+    };
+  });
+}
+
+/** Tự động trừ số dư tham chiếu của tài khoản nguồn (nếu người dùng có nhập số dư tham chiếu). */
+export function deductLinkedAccountReferenceBalance(id: string, amount: number): void {
+  if (!id || amount <= 0) return;
+  hubStore.setState((prev) => {
+    const target = prev.linkedAccounts.find((item) => item.id === id);
+    if (!target || target.referenceBalance === null) return prev;
+    return {
+      ...prev,
+      linkedAccounts: prev.linkedAccounts.map((item) =>
+        item.id === id
+          ? { ...item, referenceBalance: Math.max(0, (item.referenceBalance ?? 0) - Math.round(amount)) }
+          : item,
+      ),
+    };
+  });
+}
+
+/** Gỡ liên kết tài khoản; dọn nguồn chuyển & tài khoản nhận mặc định. Trả về `true` nếu đã gỡ. */
 export function removeLinkedAccount(id: string): boolean {
   let removed = false;
   hubStore.setState((prev) => {
-    if (prev.linkedAccounts.length <= 1 || !prev.linkedAccounts.some((item) => item.id === id)) return prev;
+    if (!prev.linkedAccounts.some((item) => item.id === id)) return prev;
     const linkedAccounts = prev.linkedAccounts.filter((item) => item.id !== id);
     const defaultSourceId = linkedAccounts.some((item) => item.id === prev.defaultSourceId)
       ? prev.defaultSourceId
-      : linkedAccounts[0].id;
+      : linkedAccounts[0]?.id ?? "";
     const defaultReceiveId = prev.defaultReceiveId === id ? null : prev.defaultReceiveId;
     removed = true;
     return { ...prev, linkedAccounts, defaultSourceId, defaultReceiveId };

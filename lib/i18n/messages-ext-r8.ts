@@ -32,7 +32,7 @@ export const viExtR8 = {
   },
   home: {
     hello: "Xin chào",
-    name: "Ban Giám Khảo",
+    name: "Bạn",
     shieldOn: "Lá chắn AI đang bật",
     balance: "Số dư ví hợp nhất",
     source: (label: string): string => `Nguồn tiền: ${label}`,
@@ -96,7 +96,7 @@ export const enExtR8: ExtR8Messages = {
   },
   home: {
     hello: "Hello",
-    name: "Judges",
+    name: "there",
     shieldOn: "AI Shield is on",
     balance: "Unified wallet balance",
     source: (label) => `Paying from: ${label}`,

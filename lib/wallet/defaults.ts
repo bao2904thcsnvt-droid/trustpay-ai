@@ -31,6 +31,19 @@ export function createDefaultWalletBudgets(): BudgetCategory[] {
   ];
 }
 
+/**
+ * Ngân sách sạch khởi tạo cho chế độ Tiền Thật (Real Non-Custodial Banking Mode):
+ * toàn bộ chi tiêu bắt đầu ở 0đ, tự động cộng dồn từ giao dịch thật đã xác nhận.
+ */
+export function createRealWalletBudgets(): BudgetCategory[] {
+  return [
+    { id: "b1", name: "Ăn uống", limit: 3_000_000, spent: 0 },
+    { id: "b2", name: "Mua sắm", limit: 4_000_000, spent: 0 },
+    { id: "b3", name: "Hóa đơn", limit: 2_500_000, spent: 0 },
+    { id: "b4", name: "Khác", limit: 2_000_000, spent: 0 },
+  ];
+}
+
 export const DEFAULT_GUARDIAN: TrustedGuardian = {
   name: "Nguyễn Văn A",
   phone: "0909***888",
@@ -129,6 +142,25 @@ export function createDefaultWalletState(): TrustPayWalletState {
     subscriptions: createDefaultSubscriptions(),
     guardian: { ...DEFAULT_GUARDIAN },
     tickets: createDefaultOpsTickets(),
+    anomalyCluster: { status: "DETECTED" },
+    redactedEvidenceTicketIds: [],
+  };
+}
+
+/**
+ * Trạng thái khởi tạo mặc định cho chế độ Tiền Thật (Non-Custodial):
+ * không seed số dư ví ảo 14.8tr/15tr, không seed chi tiêu mẫu 5.55tr, không ticket mẫu.
+ */
+export function createRealWalletState(): TrustPayWalletState {
+  return {
+    schemaVersion: 1,
+    balance: 0,
+    budgets: createRealWalletBudgets(),
+    blacklist: [...DEFAULT_BLACKLIST],
+    transactions: [],
+    subscriptions: [],
+    guardian: { ...DEFAULT_GUARDIAN },
+    tickets: [],
     anomalyCluster: { status: "DETECTED" },
     redactedEvidenceTicketIds: [],
   };

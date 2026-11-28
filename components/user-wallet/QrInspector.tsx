@@ -73,6 +73,8 @@ export interface QrInspectorProps {
    * sau đó Real Payment Handoff sinh VietQR động + Deep Link mở app ngân hàng / MoMo.
    */
   onRealTransfer?: (check: QrCheckResult) => void;
+  /** Chế độ Tiền thật Non-Custodial: không chặn ghi nhận thanh toán theo số dư ví ảo 0đ. */
+  nonCustodial?: boolean;
 }
 
 type ImageStatus = "idle" | "decoding" | "decoded" | "unsupported" | "not-found";
@@ -159,6 +161,7 @@ export default function QrInspector({
   externalPayload = null,
   onExternalPayloadHandled,
   onRealTransfer,
+  nonCustodial = true,
 }: QrInspectorProps) {
   const { t, money, category: categoryLabel, data } = useI18n();
   const features = useFeatureState();
@@ -367,7 +370,7 @@ export default function QrInspector({
 
   const handlePay = () => {
     if (!activeCheck) return;
-    if (activeCheck.amount > walletBalance) {
+    if (!nonCustodial && activeCheck.amount > walletBalance) {
       setPayError(t.qr.insufficient);
       return;
     }

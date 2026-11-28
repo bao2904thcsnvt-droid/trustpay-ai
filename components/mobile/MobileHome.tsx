@@ -6,8 +6,6 @@ import {
   ArrowUpRight,
   Bell,
   ChevronRight,
-  Eye,
-  EyeOff,
   Landmark,
   MessageSquareWarning,
   ScanLine,
@@ -17,8 +15,9 @@ import {
   Split,
 } from "lucide-react";
 import type { BudgetCategory, RiskLevel } from "@/types/trustpay";
-import { BIOMETRIC_DAILY_CUMULATIVE_THRESHOLD_VND } from "@/lib/compliance/biometric-policy";
+import type { StoredLinkedAccount } from "@/lib/hub/hub-store";
 import { useI18n } from "@/components/i18n/I18nProvider";
+import RealBankCard from "@/components/banking/RealBankCard";
 
 export type HomeActionId = "transfer" | "withdraw" | "scan" | "banks" | "split" | "bill" | "check" | "ops";
 
@@ -26,8 +25,12 @@ export interface MobileHomeProps {
   balance: number;
   balanceHidden: boolean;
   onToggleBalance: () => void;
-  /** Nhãn nguồn tiền mặc định, vd "PVcomBank •••• 4128". */
-  sourceLabel: string;
+  /** Tài khoản ngân hàng thật đã liên kết (Non-Custodial). */
+  accounts: StoredLinkedAccount[];
+  defaultSourceId: string;
+  demoMode?: boolean;
+  /** Tên người dùng hiển thị trên lời chào (lấy từ chủ TK ngân hàng thật hoặc "Bạn"). */
+  ownerDisplayName?: string;
   /** Tổng đã chi hôm nay (giờ Việt Nam); null khi chưa xác định (SSR). */
   dailyOutflow: number | null;
   budgets: BudgetCategory[];
@@ -35,6 +38,8 @@ export interface MobileHomeProps {
   /** Kết luận gần nhất của AI Agent (nếu đã phân tích giao dịch). */
   lastVerdict: { score: number; level: RiskLevel } | null;
   onAction: (action: HomeActionId) => void;
+  onAccountLinked?: (label: string) => void;
+  onSourceChanged?: (label: string) => void;
   /** Phần còn lại của Trang chủ: Người giám hộ, Lịch sử giao dịch. */
   children?: ReactNode;
 }
@@ -65,24 +70,30 @@ export default function MobileHome({
   balance,
   balanceHidden,
   onToggleBalance,
-  sourceLabel,
+  accounts,
+  defaultSourceId,
+  demoMode = false,
+  ownerDisplayName,
   dailyOutflow,
   budgets,
   pendingAlertsCount,
   lastVerdict,
   onAction,
+  onAccountLinked,
+  onSourceChanged,
   children,
 }: MobileHomeProps) {
   const { t, money, category } = useI18n();
-  const daily = dailyOutflow ?? 0;
-  const dailyPct = Math.min(100, Math.round((daily / BIOMETRIC_DAILY_CUMULATIVE_THRESHOLD_VND) * 100));
   const alert = pendingAlertsCount > 0;
+  const totalLimit = budgets.reduce((sum, b) => sum + b.limit, 0);
+  const totalSpent = budgets.reduce((sum, b) => sum + b.spent, 0);
+  const greetingName = ownerDisplayName?.trim() || t.home.name;
 
   return (
     <div className="mh">
       <section className="mh-greet">
         <p className="mh-hello">
-          {t.home.hello}, {t.home.name} <span aria-hidden="true">👋</span>
+          {t.home.hello}, {greetingName} <span aria-hidden="true">👋</span>
         </p>
         <span className="mh-pill">
           <ShieldCheck className="h-4 w-4" aria-hidden="true" />
@@ -90,39 +101,20 @@ export default function MobileHome({
         </span>
       </section>
 
-      <section className="mh-card" aria-label={t.home.balance}>
-        <div className="mh-card-top">
-          <span className="mh-card-label">{t.home.balance}</span>
-          <button
-            type="button"
-            className="mh-eye"
-            onClick={onToggleBalance}
-            aria-pressed={balanceHidden}
-            aria-label={balanceHidden ? t.privacy.show : t.privacy.hide}
-            title={balanceHidden ? t.privacy.show : t.privacy.hide}
-          >
-            {balanceHidden ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
-          </button>
-        </div>
-        <p className="mh-balance tp-num" aria-live="polite">
-          {balanceHidden ? t.privacy.hidden : money(balance)}
-        </p>
-        <button type="button" className="mh-source" onClick={() => onAction("banks")}>
-          <span className="min-w-0 truncate">{t.home.source(sourceLabel)}</span>
-          <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
-        </button>
-        <div className="mh-daily">
-          <div className="mh-daily-row">
-            <span>{t.home.daily}</span>
-            <span className="tp-num">
-              {money(daily)} / {money(BIOMETRIC_DAILY_CUMULATIVE_THRESHOLD_VND)}
-            </span>
-          </div>
-          <div className="mh-daily-bar" aria-hidden="true">
-            <span style={{ width: `${dailyPct}%` }} />
-          </div>
-        </div>
-      </section>
+      <RealBankCard
+        accounts={accounts}
+        defaultSourceId={defaultSourceId}
+        balanceHidden={balanceHidden}
+        onToggleBalance={onToggleBalance}
+        dailyOutflow={dailyOutflow}
+        monthlySpent={totalSpent}
+        monthlyLimit={totalLimit}
+        demoMode={demoMode}
+        demoWalletBalance={balance}
+        onStartTransfer={() => onAction("transfer")}
+        onAccountLinked={onAccountLinked}
+        onSourceChanged={onSourceChanged}
+      />
 
       <section aria-label={t.home.actions}>
         <div className="mh-actions">

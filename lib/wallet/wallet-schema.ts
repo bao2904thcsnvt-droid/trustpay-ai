@@ -16,6 +16,8 @@ import {
   createDefaultSubscriptions,
   createDefaultWalletBudgets,
   createDefaultWalletState,
+  createRealWalletBudgets,
+  createRealWalletState,
   DEFAULT_GUARDIAN,
 } from "@/lib/wallet/defaults";
 
@@ -278,6 +280,29 @@ export function sanitizeWalletState(raw: unknown): TrustPayWalletState {
       : createDefaultSubscriptions(),
     guardian: sanitizeGuardian(raw.guardian),
     tickets: Array.isArray(raw.tickets) ? sanitizeList(raw.tickets, sanitizeTicket, MAX_TICKETS) : defaults.tickets,
+    anomalyCluster: sanitizeAnomaly(raw.anomalyCluster),
+    redactedEvidenceTicketIds: sanitizeStringList(raw.redactedEvidenceTicketIds, MAX_TICKETS, []),
+  };
+}
+
+/** Làm sạch dữ liệu lưu bền vững cho chế độ Tiền Thật (mặc định sạch 0đ, không seed mẫu). */
+export function sanitizeRealWalletState(raw: unknown): TrustPayWalletState {
+  const defaults = createRealWalletState();
+  if (!isRecord(raw) || raw.schemaVersion !== 1) {
+    return defaults;
+  }
+  const budgets = Array.isArray(raw.budgets) ? sanitizeBudgets(raw.budgets) : createRealWalletBudgets();
+  return {
+    schemaVersion: 1,
+    balance: isFiniteNumber(raw.balance) ? Math.max(0, Math.round(raw.balance)) : 0,
+    budgets,
+    blacklist: sanitizeStringList(raw.blacklist, MAX_BLACKLIST, defaults.blacklist),
+    transactions: sanitizeList(raw.transactions, sanitizeTransaction, MAX_TRANSACTIONS),
+    subscriptions: Array.isArray(raw.subscriptions)
+      ? sanitizeList(raw.subscriptions, sanitizeSubscription, MAX_SUBSCRIPTIONS)
+      : [],
+    guardian: sanitizeGuardian(raw.guardian),
+    tickets: Array.isArray(raw.tickets) ? sanitizeList(raw.tickets, sanitizeTicket, MAX_TICKETS) : [],
     anomalyCluster: sanitizeAnomaly(raw.anomalyCluster),
     redactedEvidenceTicketIds: sanitizeStringList(raw.redactedEvidenceTicketIds, MAX_TICKETS, []),
   };

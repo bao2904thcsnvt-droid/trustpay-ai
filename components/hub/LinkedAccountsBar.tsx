@@ -91,6 +91,11 @@ export default function LinkedAccountsBar({ accounts, defaultSourceId, onSourceC
         </button>
       </div>
 
+      {accounts.length === 0 ? (
+        <p className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-3.5 py-3 text-xs text-slate-600">
+          Chưa liên kết tài khoản ngân hàng thật nào — bấm <strong className="font-semibold text-[#a50064]">{t.hub.add}</strong> để liên kết ngay.
+        </p>
+      ) : (
       <ul className="tp-scroll-x mt-3 flex snap-x gap-3 pb-1">
         {accounts.map((account) => {
           const institution = findInstitution(account.institutionCode);
@@ -154,6 +159,7 @@ export default function LinkedAccountsBar({ accounts, defaultSourceId, onSourceC
           );
         })}
       </ul>
+      )}
 
       {adding && (
         <form onSubmit={handleAdd} className="mt-3 grid grid-cols-1 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-3">

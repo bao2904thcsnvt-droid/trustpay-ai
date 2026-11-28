@@ -12,9 +12,11 @@ export type InterbankTab = "transfer" | "withdraw";
 export interface InterbankPanelProps {
   accounts: LinkedAccount[];
   defaultSourceId: string;
-  /** Số dư ví hợp nhất (để kiểm tra số tiền rút). */
+  /** Số dư ví hợp nhất (chỉ dùng trong Chế độ dữ liệu mẫu; chế độ Tiền thật là Non-Custodial). */
   balance: number;
   balanceHidden: boolean;
+  /** Mặc định true (Non-Custodial): tiền đi trực tiếp từ App Ngân hàng, không chặn theo số dư ảo 0đ. */
+  nonCustodial?: boolean;
   tab: InterbankTab;
   onTabChange: (tab: InterbankTab) => void;
   /** Rút về tài khoản chính chủ đã liên kết (đã có STK đầy đủ). */
@@ -40,6 +42,7 @@ export default function InterbankPanel({
   defaultSourceId,
   balance,
   balanceHidden,
+  nonCustodial = true,
   tab,
   onTabChange,
   onWithdraw,
@@ -72,7 +75,7 @@ export default function InterbankPanel({
       setError(t.mob.xfer.invalidAmount);
       return;
     }
-    if (amount > balance) {
+    if (!nonCustodial && amount > balance) {
       setError(t.mob.xfer.overBalance(money(balance)));
       return;
     }
@@ -104,20 +107,27 @@ export default function InterbankPanel({
       {tab === "transfer" ? (
         <>
           <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-xs">
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold text-slate-600">{t.mob.xfer.source}</span>
-              <select
-                value={defaultSourceId}
-                onChange={(event) => setDefaultSource(event.target.value)}
-                className={`${field} cursor-pointer`}
-              >
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {label(account)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {accounts.length > 0 ? (
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600">{t.mob.xfer.source}</span>
+                <select
+                  value={defaultSourceId}
+                  onChange={(event) => setDefaultSource(event.target.value)}
+                  className={`${field} cursor-pointer`}
+                >
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {label(account)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-600">
+                Chưa liên kết ngân hàng nguồn — bạn vẫn có thể quét AI &amp; sinh mã VietQR để thanh toán bằng bất kỳ App
+                Ngân hàng nào.
+              </p>
+            )}
             <p className="mt-1.5 text-xs text-slate-500">{t.mob.xfer.sourceHint}</p>
           </section>
           {beforeForm}
@@ -134,8 +144,12 @@ export default function InterbankPanel({
               <option value="unified">{t.mob.xfer.srcUnified}</option>
               <option value="momo">{t.mob.xfer.srcMomo}</option>
             </select>
-            <span className="tp-num mt-1.5 block text-sm font-semibold text-slate-700">
-              {balanceHidden ? t.privacy.hidden : money(balance)}
+            <span className="tp-num mt-1.5 block text-xs font-semibold text-slate-600">
+              {nonCustodial
+                ? "Số dư quản lý trực tiếp trên App Ngân hàng / Ví MoMo của bạn"
+                : balanceHidden
+                  ? t.privacy.hidden
+                  : money(balance)}
             </span>
           </label>
 

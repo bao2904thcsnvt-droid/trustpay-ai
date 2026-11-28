@@ -54,7 +54,7 @@ export function patchTransaction(
   };
 }
 
-/** Trừ tiền thật: giảm số dư, cộng `spent` của danh mục, ghi/cập nhật lịch sử. */
+/** Trừ tiền thật (chế độ Ví Demo): giảm số dư, cộng `spent` của danh mục, ghi/cập nhật lịch sử. */
 export function applyDebit(state: TrustPayWalletState, tx: WalletTransaction): TrustPayWalletState {
   if (tx.amount <= 0 || tx.amount > state.balance) {
     return state;
@@ -63,6 +63,28 @@ export function applyDebit(state: TrustPayWalletState, tx: WalletTransaction): T
   return {
     ...state,
     balance: state.balance - tx.amount,
+    budgets: hasCategory
+      ? state.budgets.map((budget) =>
+          budget.name === tx.category ? { ...budget, spent: budget.spent + tx.amount } : budget,
+        )
+      : state.budgets,
+    transactions: upsertTransactionInList(state.transactions, { ...tx, status: "COMPLETED" }),
+  };
+}
+
+/**
+ * Ghi nhận giao dịch THẬT đã hoàn tất trên App Ngân hàng (Non-Custodial):
+ * không chặn theo số dư ví ảo (tiền đi trực tiếp từ ngân hàng của người dùng),
+ * cộng chi tiêu vào danh mục ngân sách & lịch sử thật (tự cập nhật lũy kế ngày TT 50 NHNN).
+ */
+export function recordRealTransfer(state: TrustPayWalletState, tx: WalletTransaction): TrustPayWalletState {
+  if (tx.amount <= 0) {
+    return state;
+  }
+  const hasCategory = Boolean(findBudget(state.budgets, tx.category));
+  return {
+    ...state,
+    balance: state.balance > 0 ? Math.max(0, state.balance - tx.amount) : 0,
     budgets: hasCategory
       ? state.budgets.map((budget) =>
           budget.name === tx.category ? { ...budget, spent: budget.spent + tx.amount } : budget,

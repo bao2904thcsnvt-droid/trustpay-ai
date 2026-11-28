@@ -67,6 +67,8 @@ export interface AiShieldResultPanelProps {
   onDownloadReport?: () => void;
   reportReady?: boolean;
   guardianName?: string;
+  /** Chế độ Tiền thật Non-Custodial: không chặn giao dịch theo số dư ví ảo 0đ. */
+  nonCustodial?: boolean;
 }
 
 function getRiskTheme(level: RiskLevel) {
@@ -124,6 +126,7 @@ export default function AiShieldResultPanel({
   onDownloadReport,
   reportReady = false,
   guardianName = "",
+  nonCustodial = true,
 }: AiShieldResultPanelProps) {
   const { t, money, category: categoryLabel, data } = useI18n();
 
@@ -161,7 +164,7 @@ export default function AiShieldResultPanel({
   const needsBiometric = requireBiometric ?? analysis.requireBiometric;
   const riskTheme = getRiskTheme(scamReport.riskLevel);
   const RiskIcon = riskTheme.Icon;
-  const isInsufficientBalance = parsedAmount > walletBalance;
+  const isInsufficientBalance = !nonCustodial && parsedAmount > walletBalance;
   const isInvalidAmount = parsedAmount <= 0;
   const isActionable = transactionStatus === "idle" || transactionStatus === "frozen";
   const needsBiometricGate = needsBiometric && !biometricVerified;

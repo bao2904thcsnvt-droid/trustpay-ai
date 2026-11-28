@@ -20,7 +20,7 @@ export const AUDIT_STORAGE_KEY = "trustpay-ai.audit.v1";
 export const AUDIT_GENESIS_HASH = "0".repeat(64);
 export const AUDIT_MAX_ENTRIES = 200;
 
-export type AuditKind = "ANALYSIS" | "GUARDIAN" | "OPS_BLOCK" | "OPS_APPROVE" | "QR_INSPECT" | "BANK_LINK";
+export type AuditKind = "ANALYSIS" | "GUARDIAN" | "OPS_BLOCK" | "OPS_APPROVE" | "QR_INSPECT" | "BANK_LINK" | "REAL_TRANSFER";
 
 export type AuditValue = string | number | boolean;
 
@@ -38,7 +38,7 @@ export interface AuditState {
   entries: AuditEntry[];
 }
 
-const AUDIT_KINDS: readonly AuditKind[] = ["ANALYSIS", "GUARDIAN", "OPS_BLOCK", "OPS_APPROVE", "QR_INSPECT", "BANK_LINK"];
+const AUDIT_KINDS: readonly AuditKind[] = ["ANALYSIS", "GUARDIAN", "OPS_BLOCK", "OPS_APPROVE", "QR_INSPECT", "BANK_LINK", "REAL_TRANSFER"];
 
 function hashInput(entry: Omit<AuditEntry, "hash">): string {
   return canonicalJson({

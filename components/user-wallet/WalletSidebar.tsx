@@ -2,30 +2,23 @@
 
 import { useState, type FormEvent } from "react";
 import {
-  Wallet,
   Utensils,
   ShoppingBag,
   Car,
   Receipt,
   LayoutGrid,
   ShieldBan,
-  ShieldCheck,
   AlertTriangle,
   TrendingUp,
   Network,
-  Gauge,
   Plus,
-  Eye,
-  EyeOff,
 } from "lucide-react";
 import type { BudgetCategory, CategoryName, TrustedGuardian } from "@/types/trustpay";
+import type { StoredLinkedAccount } from "@/lib/hub/hub-store";
 import { useI18n } from "@/components/i18n/I18nProvider";
 import GuardianProfileCard from "@/components/user-wallet/GuardianProfileCard";
+import RealBankCard from "@/components/banking/RealBankCard";
 import { isClusterPattern, normalizeBlacklistEntry } from "@/lib/wallet/blacklist-patterns";
-import {
-  BIOMETRIC_DAILY_CUMULATIVE_THRESHOLD_VND,
-  BIOMETRIC_SINGLE_TXN_THRESHOLD_VND,
-} from "@/lib/compliance/biometric-policy";
 
 export interface WalletSidebarProps {
   walletBalance: number;
@@ -41,6 +34,13 @@ export interface WalletSidebarProps {
   /** Vòng 4: "👁️ Ẩn/Hiện số dư" — ẩn thì hiển thị `•••••••• đ`. */
   balanceHidden?: boolean;
   onToggleBalance?: () => void;
+  /** Tài khoản ngân hàng thật đã liên kết (Non-Custodial). */
+  linkedAccounts?: StoredLinkedAccount[];
+  defaultSourceId?: string;
+  demoMode?: boolean;
+  onStartTransfer?: () => void;
+  onAccountLinked?: (label: string) => void;
+  onSourceChanged?: (label: string) => void;
   /**
    * Vòng 8: chỉ hiện một số khối (Trang chủ điện thoại dùng `["guardian"]`, công cụ Lá chắn dùng
    * `["blacklist"]`). Mặc định hiện đủ 4 khối như giao diện laptop.
@@ -118,6 +118,12 @@ export default function WalletSidebar({
   guardianHighlighted = false,
   balanceHidden = false,
   onToggleBalance,
+  linkedAccounts = [],
+  defaultSourceId = "",
+  demoMode = false,
+  onStartTransfer,
+  onAccountLinked,
+  onSourceChanged,
   sections = ALL_SECTIONS,
 }: WalletSidebarProps) {
   const { t, money, category } = useI18n();
@@ -128,10 +134,6 @@ export default function WalletSidebar({
 
   const totalLimit = budgets.reduce((sum, b) => sum + b.limit, 0);
   const totalSpent = budgets.reduce((sum, b) => sum + b.spent, 0);
-  const totalPct = totalLimit > 0 ? Math.min(100, Math.round((totalSpent / totalLimit) * 100)) : 0;
-
-  const daily = dailyOutflow ?? 0;
-  const dailyPct = Math.min(100, Math.round((daily / BIOMETRIC_DAILY_CUMULATIVE_THRESHOLD_VND) * 100));
 
   const statusLabel: Record<ProgressStatus, string> = {
     over: t.wallet.statusOver,
@@ -161,87 +163,22 @@ export default function WalletSidebar({
 
   return (
     <aside className="flex flex-col gap-5">
-      {/* 1. Thẻ Số dư Ví Khả Dụng */}
+      {/* 1. Thẻ Tài khoản Ngân hàng Liên kết Thật (Real Non-Custodial Banking Card) */}
       {show("balance") && (
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#a50064] via-[#c21878] to-[#d82d8b] p-6 text-white shadow-lg shadow-[#a50064]/20">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -top-10 -right-10 h-36 w-36 rounded-full bg-white/10 blur-2xl"
+        <RealBankCard
+          accounts={linkedAccounts}
+          defaultSourceId={defaultSourceId}
+          balanceHidden={balanceHidden}
+          onToggleBalance={onToggleBalance ?? (() => {})}
+          dailyOutflow={dailyOutflow}
+          monthlySpent={totalSpent}
+          monthlyLimit={totalLimit}
+          demoMode={demoMode}
+          demoWalletBalance={walletBalance}
+          onStartTransfer={onStartTransfer ?? (() => {})}
+          onAccountLinked={onAccountLinked}
+          onSourceChanged={onSourceChanged}
         />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -bottom-12 -left-10 h-32 w-32 rounded-full bg-pink-300/15 blur-2xl"
-        />
-
-        <div className="relative z-10">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-xs">
-                <Wallet className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-pink-100">{t.wallet.balanceTitle}</p>
-                <p className="text-[11px] text-pink-200/90">{t.wallet.walletSubtitle}</p>
-              </div>
-            </div>
-
-            <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-xs">
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-300" />
-              {t.wallet.shieldOn}
-            </span>
-          </div>
-
-          <div className="mt-5">
-            <div className="flex items-center gap-2">
-              <p className="tp-num min-w-0 text-3xl font-bold tracking-tight text-white" aria-live="polite">
-                {balanceHidden ? t.privacy.hidden : money(walletBalance)}
-              </p>
-              {onToggleBalance && (
-                <button
-                  type="button"
-                  onClick={onToggleBalance}
-                  aria-pressed={balanceHidden}
-                  aria-label={balanceHidden ? t.privacy.show : t.privacy.hide}
-                  title={balanceHidden ? `👁️ ${t.privacy.show}` : `👁️ ${t.privacy.hide}`}
-                  className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-white/15 text-white transition-colors hover:bg-white/25"
-                >
-                  {balanceHidden ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
-                </button>
-              )}
-            </div>
-            <p className="mt-1 text-xs text-pink-100/90">
-              {t.wallet.spentSummary(money(totalSpent), money(totalLimit), totalPct)}
-            </p>
-          </div>
-
-          {/* Lũy kế ngày theo TT 50 / QĐ 2345 */}
-          <div className="mt-4 rounded-2xl bg-white/10 p-3 backdrop-blur-xs">
-            <div className="flex items-center justify-between gap-2 text-[11px]">
-              <span className="inline-flex items-center gap-1 font-semibold text-pink-50">
-                <Gauge className="h-3.5 w-3.5" />
-                {t.wallet.dailyTitle}
-              </span>
-              <span className="font-mono font-bold text-white">
-                {money(daily)} / {money(BIOMETRIC_DAILY_CUMULATIVE_THRESHOLD_VND)}
-              </span>
-            </div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/20">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  dailyPct >= 100 ? "bg-amber-300" : "bg-white"
-                }`}
-                style={{ width: `${dailyPct}%` }}
-              />
-            </div>
-            <p className="mt-1.5 text-[10px] leading-relaxed text-pink-100/85">
-              {t.wallet.dailyHint(
-                money(BIOMETRIC_SINGLE_TXN_THRESHOLD_VND),
-                money(BIOMETRIC_DAILY_CUMULATIVE_THRESHOLD_VND),
-              )}
-            </p>
-          </div>
-        </div>
-      </div>
       )}
 
       {/* 2. Người giám hộ tin cậy */}

@@ -1,8 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import type { StoredLinkedAccount } from "@/lib/hub/hub-store";
 import { useI18n } from "@/components/i18n/I18nProvider";
+import RealBankCard from "@/components/banking/RealBankCard";
 
 export type EasyPanel = "home" | "scan" | "transfer" | "check";
 
@@ -10,7 +11,14 @@ export interface EasyHomeProps {
   balance: number;
   balanceHidden: boolean;
   onToggleBalance: () => void;
-  sourceLabel: string;
+  accounts: StoredLinkedAccount[];
+  defaultSourceId: string;
+  dailyOutflow: number | null;
+  monthlySpent: number;
+  monthlyLimit: number;
+  demoMode?: boolean;
+  onAccountLinked?: (label: string) => void;
+  onSourceChanged?: (label: string) => void;
   panel: EasyPanel;
   onSelectPanel: (panel: Exclude<EasyPanel, "home">) => void;
   onBack: () => void;
@@ -26,13 +34,20 @@ export default function EasyHome({
   balance,
   balanceHidden,
   onToggleBalance,
-  sourceLabel,
+  accounts,
+  defaultSourceId,
+  dailyOutflow,
+  monthlySpent,
+  monthlyLimit,
+  demoMode = false,
+  onAccountLinked,
+  onSourceChanged,
   panel,
   onSelectPanel,
   onBack,
   children,
 }: EasyHomeProps) {
-  const { t, money } = useI18n();
+  const { t } = useI18n();
   const actions: { id: Exclude<EasyPanel, "home">; label: string; desc: string; tint: string }[] = [
     { id: "scan", label: t.easy.scan, desc: t.easy.scanDesc, tint: "from-sky-600 to-cyan-500" },
     { id: "transfer", label: t.easy.transfer, desc: t.easy.transferDesc, tint: "from-[#a50064] to-[#d82d8b]" },
@@ -41,28 +56,20 @@ export default function EasyHome({
 
   return (
     <div className="tp-easy mx-auto flex w-full max-w-3xl flex-col gap-5">
-      <section className="rounded-3xl border border-pink-200 bg-white p-5 shadow-sm">
-        <p className="text-base font-semibold text-slate-600">{t.easy.greeting}</p>
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm text-slate-500">{t.easy.balance}</p>
-            <p className="tp-num text-3xl font-extrabold text-slate-900 sm:text-4xl" aria-live="polite">
-              {balanceHidden ? t.privacy.hidden : money(balance)}
-            </p>
-            <p className="mt-1 text-sm text-slate-500">{t.easy.source(sourceLabel)}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onToggleBalance}
-            aria-pressed={balanceHidden}
-            aria-label={balanceHidden ? t.privacy.show : t.privacy.hide}
-            title={balanceHidden ? t.privacy.show : t.privacy.hide}
-            className="inline-flex h-14 w-14 shrink-0 cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-          >
-            {balanceHidden ? <Eye className="h-7 w-7" /> : <EyeOff className="h-7 w-7" />}
-          </button>
-        </div>
-      </section>
+      <RealBankCard
+        accounts={accounts}
+        defaultSourceId={defaultSourceId}
+        balanceHidden={balanceHidden}
+        onToggleBalance={onToggleBalance}
+        dailyOutflow={dailyOutflow}
+        monthlySpent={monthlySpent}
+        monthlyLimit={monthlyLimit}
+        demoMode={demoMode}
+        demoWalletBalance={balance}
+        onStartTransfer={() => onSelectPanel("transfer")}
+        onAccountLinked={onAccountLinked}
+        onSourceChanged={onSourceChanged}
+      />
 
       {panel === "home" ? (
         <div className="grid grid-cols-1 gap-4">

@@ -104,14 +104,16 @@ export default function AppLockModal({ purpose, onUnlocked, onCancel }: AppLockM
     setAttempts(nextAttempts);
     setPin("");
     if (nextAttempts >= MAX_PIN_ATTEMPTS) {
-      setLockedUntil(Date.now() + PIN_LOCKOUT_MS);
+      const current = Date.now();
+      setNow(current);
+      setLockedUntil(current + PIN_LOCKOUT_MS);
       setError(null);
     } else {
       setError(t.lock.wrongPin(MAX_PIN_ATTEMPTS - nextAttempts));
     }
   };
 
-  const secondsLeft = lockedUntil !== null ? Math.max(1, Math.ceil((lockedUntil - (now || Date.now())) / 1000)) : 0;
+  const secondsLeft = lockedUntil !== null ? Math.max(1, Math.ceil((lockedUntil - now) / 1000)) : 0;
 
   return (
     <div

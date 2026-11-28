@@ -48,4 +48,4 @@ export function isStandaloneDisplay(): boolean {
  * (`tp-hero-open`), hoặc ẩn Hero ngay từ HTML máy chủ khi cần bỏ qua (`tp-skip-hero`) —
  * tránh nháy Hero trong iframe SDK / PWA mà không gây lệch hydrate (React vẫn render cùng cây).
  */
-export const HERO_BOOT_SCRIPT = `(function(){try{var p=new URLSearchParams(location.search),d=document.documentElement,e=(p.get("embed")||"").trim().toLowerCase(),a=p.get("action"),s=(window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;if(e==="momo"||a==="scan"||a==="split"||a==="transfer"||s)d.classList.add("tp-skip-hero");else d.classList.add("tp-hero-open")}catch(x){}})()`;
+export const HERO_BOOT_SCRIPT = `(function(){try{var p=new URLSearchParams(location.search),d=document.documentElement,e=(p.get("embed")||"").trim().toLowerCase(),a=p.get("action"),s=(window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;if(location.pathname!=="/")return;if(e==="momo"||a==="scan"||a==="split"||a==="transfer"||s)d.classList.add("tp-skip-hero");else d.classList.add("tp-hero-open")}catch(x){}})()`;

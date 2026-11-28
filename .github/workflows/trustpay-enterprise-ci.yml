@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # TrustPay AI — Enterprise CI (MoMo TechDay 2026)
 #
-# Chạy tự động trên mọi Pull Request vào nhánh `main` (và chạy tay qua
+# Chạy tự động trên mọi lần push hoặc Pull Request vào nhánh `main` (và chạy tay qua
 # workflow_dispatch khi cần demo cho Ban Giám Khảo).
 #
 # Sơ đồ pipeline:
@@ -25,6 +25,8 @@
 name: TrustPay Enterprise CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -49,9 +51,9 @@ defaults:
     shell: bash
 
 jobs:
-  # ① Kiểm tra kiểu toàn dự án (app, components, lib, tests).
+  # ① Kiểm tra kiểu & ESLint toàn dự án (app, components, lib, tests).
   typecheck:
-    name: "① Typecheck (tsc --noEmit)"
+    name: "① Typecheck & Lint"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -75,6 +77,9 @@ jobs:
       - name: npm run typecheck
         run: npm run typecheck
 
+      - name: npm run lint
+        run: npm run lint
+
   # ② Bộ kiểm thử đối kháng: 15 kịch bản lừa đảo + 20 kịch bản Prompt Injection.
   adversarial-tests:
     name: "② Fraud & Prompt-Injection suites"
@@ -94,13 +99,13 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: npm run test:fraud (15 kịch bản lừa đảo + tự phục hồi)
-        run: npm run test:fraud 2>&1 | tee fraud-report.txt
+      - name: npm run test:fraud -- --strict (kiểm thử lừa đảo + tự phục hồi)
+        run: npm run test:fraud -- --strict 2>&1 | tee fraud-report.txt
 
-      - name: npm run test:injection (20 kịch bản Prompt Injection / Jailbreak)
+      - name: npm run test:injection -- --strict (kiểm thử Prompt Injection / Jailbreak)
         # Vẫn chạy khi test:fraud lỗi để hiển thị đủ cả hai báo cáo.
         if: ${{ !cancelled() }}
-        run: npm run test:injection 2>&1 | tee injection-report.txt
+        run: npm run test:injection -- --strict 2>&1 | tee injection-report.txt
 
       - name: Publish job summary
         if: ${{ !cancelled() }}

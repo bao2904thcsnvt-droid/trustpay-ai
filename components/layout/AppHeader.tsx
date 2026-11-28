@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
   BookOpen,
@@ -8,6 +9,7 @@ import {
   Cloud,
   Compass,
   Ellipsis,
+  FileCheck2,
   Gauge,
   Menu,
   Moon,
@@ -429,6 +431,10 @@ export default function AppHeader({
                       <span className="min-w-0 flex-1">{t.header.welcome}</span>
                     </button>
                   )}
+                  <Link href="/privacy" onClick={() => setMenuOpen(false)} className={menuItem}>
+                    <FileCheck2 className="h-4 w-4 shrink-0 text-[#a50064]" />
+                    <span className="min-w-0 flex-1">Chính sách dữ liệu (NĐ 13/2023)</span>
+                  </Link>
                 </div>
               </div>
             )}

@@ -8,9 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test:fraud": "npx --yes tsx tests/fraud-adversarial-suite.ts",
-    "test:injection": "npx --yes tsx tests/prompt-injection-jailbreak-suite.ts",
-    "test:bench": "npx --yes tsx tests/concurrency-benchmark-suite.ts",
+    "test:fraud": "tsx tests/fraud-adversarial-suite.ts",
+    "test:injection": "tsx tests/prompt-injection-jailbreak-suite.ts",
+    "test:bench": "tsx tests/concurrency-benchmark-suite.ts",
     "test:all": "npm run test:fraud && npm run test:injection"
   },
   "dependencies": {
@@ -32,6 +32,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
     "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

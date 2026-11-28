@@ -243,6 +243,11 @@ const subscribeDayClock = (onChange: () => void) => {
 const getDayKeySnapshot = () => vnDayKey(Date.now());
 const getServerDayKeySnapshot = () => "";
 
+const subscribeNoop = () => () => {};
+const getInitialSkipHero = () => shouldSkipHero(window.location.search) || isStandaloneDisplay();
+const getInitialUrlEmbed = () => isEmbedRequested(window.location.search);
+const getServerFalse = () => false;
+
 function useTodayKey(): string {
   return useSyncExternalStore(subscribeDayClock, getDayKeySnapshot, getServerDayKeySnapshot);
 }
@@ -311,8 +316,13 @@ export default function TrustPayApp() {
   // Vòng 3: người nhận thật (giữ ở đây để không mất khi biểu mẫu remount) + nhật ký Decision Token.
   const [payeeDraft, setPayeeDraft] = useState<PayeeDraft>(EMPTY_PAYEE_DRAFT);
   const [sdkEvents, setSdkEvents] = useState<SdkEventRecord[]>([]);
-  const [urlEmbed, setUrlEmbed] = useState(false);
+  const initialUrlEmbed = useSyncExternalStore(subscribeNoop, getInitialUrlEmbed, getServerFalse);
+  const [urlEmbedDismissed, setUrlEmbedDismissed] = useState(false);
+  const urlEmbed = initialUrlEmbed && !urlEmbedDismissed;
   const urlEmbedRef = useRef(false);
+  useEffect(() => {
+    urlEmbedRef.current = urlEmbed;
+  }, [urlEmbed]);
   const hostRequestHandlerRef = useRef<(request: HostTransferRequest) => void>(() => {});
 
   const toastTimerRef = useRef<number | null>(null);
@@ -332,7 +342,10 @@ export default function TrustPayApp() {
   const pendingHandoffFocusRef = useRef(false);
 
   // Vòng 5 — Hero toàn màn hình (mặc định hiện khi mới vào; máy chủ & lần hydrate đầu giống nhau).
-  const [heroVisible, setHeroVisible] = useState(true);
+  // iframe nhúng SDK (`?embed=momo`), lối tắt PWA (`?action=…`) và PWA standalone tự bỏ qua Hero.
+  const initialSkipHero = useSyncExternalStore(subscribeNoop, getInitialSkipHero, getServerFalse);
+  const [heroOverride, setHeroVisible] = useState<boolean | null>(null);
+  const heroVisible = heroOverride ?? !initialSkipHero;
   const [heroLeaving, setHeroLeaving] = useState(false);
   const heroTimerRef = useRef<number | null>(null);
   const reducedMotion = usePrefersReducedMotion();
@@ -384,12 +397,13 @@ export default function TrustPayApp() {
   // Vòng 8: tab Chuyển tiền / Rút tiền giữ ở đây để Trang chủ mở thẳng đúng tab.
   const [xferTab, setXferTab] = useState<InterbankTab>("transfer");
 
-  // iframe nhúng SDK (`?embed=momo`), lối tắt PWA (`?action=…`) và PWA đã cài (standalone) đi
-  // thẳng vào Không gian làm việc.
-  useEffect(() => {
-    if (shouldSkipHero(window.location.search) || isStandaloneDisplay()) {
-      setHeroVisible(false);
-    }
+  const focusArea = useCallback((id: string) => {
+    setHighlightTarget(id);
+    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = window.setTimeout(() => setHighlightTarget(null), 2800);
+    window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
   }, []);
 
   // Mở khóa chỉ có hiệu lực 2 phút cho việc tạo mã VietQR — hẹn giờ đánh dấu hết hạn (không gọi
@@ -407,15 +421,6 @@ export default function TrustPayApp() {
       if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
       if (heroTimerRef.current !== null) window.clearTimeout(heroTimerRef.current);
     };
-  }, []);
-
-  // `?embed=momo` → bật giao diện nhúng SDK tinh gọn cho riêng phiên/iframe này (không ghi đè
-  // tùy chọn đã lưu, để tab TrustPay đầy đủ đang mở song song không bị chuyển chế độ theo).
-  useEffect(() => {
-    if (isEmbedRequested(window.location.search)) {
-      urlEmbedRef.current = true;
-      setUrlEmbed(true);
-    }
   }, []);
 
   // Vòng 4 — lối tắt PWA (manifest `shortcuts`): `/?action=scan` mở Camera quét QR, `/?action=split`
@@ -456,8 +461,7 @@ export default function TrustPayApp() {
       window.history.replaceState(window.history.state, "", url.toString());
     }, 0);
     return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [focusArea]);
 
   // Host App → SDK: chỉ nhận từ iframe cha có origin đã khai báo (?hostOrigin= hoặc referrer).
   useEffect(() => {
@@ -497,15 +501,6 @@ export default function TrustPayApp() {
       next[index] = true;
       return next;
     });
-  };
-
-  const focusArea = (id: string) => {
-    setHighlightTarget(id);
-    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
-    highlightTimerRef.current = window.setTimeout(() => setHighlightTarget(null), 2800);
-    window.setTimeout(() => {
-      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 120);
   };
 
   const seedScenario3 = () => {
@@ -1389,7 +1384,7 @@ export default function TrustPayApp() {
   const exitEmbedMode = () => {
     setEmbedMode(false);
     urlEmbedRef.current = false;
-    setUrlEmbed(false);
+    setUrlEmbedDismissed(true);
     if (isEmbedRequested(window.location.search)) {
       // Bỏ `?embed=momo` khỏi URL để lần tải lại không tự bật lại.
       const url = new URL(window.location.href);

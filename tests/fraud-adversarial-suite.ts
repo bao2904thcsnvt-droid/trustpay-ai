@@ -134,6 +134,23 @@ import {
   computeEntryHashSync,
   verifyChainSync,
 } from "@/lib/audit-chain";
+// v1.6 — Danh bạ ngân hàng chuẩn NAPAS (nguồn duy nhất) + bộ giải mã VietQR EMVCo đầy đủ
+import {
+  buildBankTransferDeepLink,
+  buildMomoAppLink,
+  findVietnamBank,
+  findVietnamBankByBin,
+  isValidAccountNumberFor,
+  MOMO_APP_SCHEME,
+  normalizeNapasAccountName,
+  parseVietQr,
+  sanitizeAccountName,
+  toPayeeDraftFromQr,
+  VIETNAM_BANKS,
+} from "@/lib/vietqr";
+import { findInstitutionByBin, isPayeeInstitutionCode, PAYEE_INSTITUTIONS, PAYER_BANK_APPS } from "@/lib/payments/banks";
+import { buildEmvPayload, tlv } from "@/lib/qr/emvco";
+import { NAPAS_GUID } from "@/lib/qr/vietqr-inspector";
 
 configureOfflineMode();
 
@@ -1287,6 +1304,261 @@ void (async () => {
 
     c.eq(amountBand(10_000_000), "10M-20M", "Dải số tiền thay số chính xác (NĐ 13)");
     c.eq(amountBand(9_999_999), "1M-10M", "Dải 1M–10M");
+  });
+
+  // ------------------------------------------------------------------ v1.6
+
+  // F36 — Danh bạ ngân hàng chuẩn NAPAS (nguồn duy nhất): BIN, appId VietQR, tên liên ngân hàng, Deep Link điền sẵn
+  await suite.run("F36", "Danh bạ NAPAS 11 tổ chức: BIN/appId chuẩn, tên IN HOA KHÔNG DẤU, Deep Link ba=STK@mã ngân hàng", async (c) => {
+    const expected: Record<string, { bin: string; appId: string }> = {
+      PVCB: { bin: "970412", appId: "pvcb" },
+      VCB: { bin: "970436", appId: "vcb" },
+      MB: { bin: "970422", appId: "mb" },
+      TCB: { bin: "970407", appId: "tcb" },
+      BIDV: { bin: "970418", appId: "bidv" },
+      ICB: { bin: "970415", appId: "icb" },
+      ACB: { bin: "970416", appId: "acb" },
+      TPB: { bin: "970423", appId: "tpb" },
+      VPB: { bin: "970432", appId: "vpb" },
+      VBA: { bin: "970405", appId: "vba" },
+      MOMO: { bin: "971025", appId: "momo" },
+    };
+    c.eq(VIETNAM_BANKS.length, 11, "Danh bạ có đúng 11 tổ chức");
+    c.eq(new Set(VIETNAM_BANKS.map((bank) => bank.code)).size, 11, "Mã tổ chức không trùng");
+    c.eq(new Set(VIETNAM_BANKS.map((bank) => bank.bin)).size, 11, "BIN NAPAS không trùng");
+    c.ok(
+      Object.entries(expected).every(([code, item]) => findVietnamBank(code)?.bin === item.bin),
+      "Đủ 11 BIN NAPAS chuẩn (PVcomBank 970412 … Ví MoMo 971025)",
+    );
+    c.ok(
+      Object.entries(expected).every(([code, item]) => findVietnamBank(code)?.appId === item.appId),
+      "appId khớp danh sách deeplink chính thức của VietQR (PVcomBank = pvcb)",
+    );
+    const momo = findVietnamBank("MOMO");
+    c.eq(momo?.kind, "EWALLET", "MoMo là ví điện tử");
+    c.eq(momo?.appScheme, "momo://", "MoMo mở bằng scheme momo://");
+    c.eq(momo?.remoteImage, false, "MoMo vẽ QR trên máy (không dùng ảnh img.vietqr.io)");
+    c.ok(
+      VIETNAM_BANKS.filter((bank) => bank.code !== "MOMO").every(
+        (bank) => bank.kind === "BANK" && bank.appScheme === null && bank.remoteImage,
+      ),
+      "10 ngân hàng: kind BANK, appScheme null, dùng ảnh VietQR",
+    );
+    c.eq(findVietnamBankByBin("970432")?.code, "VPB", "Tra BIN 970432 → VPBank");
+    c.eq(findVietnamBankByBin("97043"), undefined, "BIN 5 số không tra được");
+    c.eq(findVietnamBank("XYZ"), undefined, "Mã lạ không tra được");
+
+    // Danh bạ nhận tiền cũ suy ra từ registry: giữ mã cũ + VPB, slug = appId
+    c.eq(PAYEE_INSTITUTIONS.length, 11, "PAYEE_INSTITUTIONS suy ra đủ 11 mục");
+    c.ok(
+      PAYEE_INSTITUTIONS.every(
+        (item) => item.slug === findVietnamBank(item.code)?.appId && item.bin === findVietnamBank(item.code)?.bin,
+      ),
+      "slug = appId, BIN khớp registry",
+    );
+    c.ok(isPayeeInstitutionCode("VPB") && findInstitutionByBin("970432")?.shortName === "VPBank", "Thêm VPBank vào danh bạ nhận tiền");
+    c.ok(
+      PAYER_BANK_APPS.length === 10 && PAYER_BANK_APPS.every((item) => item.kind === "BANK"),
+      "Ứng dụng người trả: 10 ngân hàng, không gồm MoMo",
+    );
+    c.eq(PAYER_BANK_APPS[0]?.code, "VCB", "Ứng dụng người trả mặc định vẫn là Vietcombank");
+
+    c.eq(normalizeNapasAccountName("  Nguyễn Văn  Đức "), "NGUYEN VAN DUC", "Tên liên ngân hàng IN HOA KHÔNG DẤU");
+    c.eq(normalizeNapasAccountName("Trần Thị Ánh-Dương (Shop)"), "TRAN THI ANH DUONG SHOP", "Bỏ ký tự đặc biệt");
+    c.eq(normalizeNapasAccountName("Đ".repeat(60)).length, 50, "Tối đa 50 ký tự");
+    c.eq(
+      sanitizeAccountName("  Nguyễn Văn  Đức "),
+      normalizeNapasAccountName("  Nguyễn Văn  Đức "),
+      "sanitizeAccountName ủy quyền chuẩn NAPAS",
+    );
+
+    c.ok(isValidAccountNumberFor("VCB", "0071 0012 34567"), "STK VCB có khoảng trắng vẫn hợp lệ sau chuẩn hóa");
+    c.ok(!isValidAccountNumberFor("VCB", "12345"), "STK 5 ký tự bị từ chối");
+    c.ok(!isValidAccountNumberFor("VCB", "0071#001234"), "STK chứa ký tự lạ bị từ chối");
+    c.ok(isValidAccountNumberFor("MOMO", "0909123888"), "SĐT MoMo 10 số hợp lệ");
+    c.ok(!isValidAccountNumberFor("MOMO", "909123888"), "SĐT MoMo thiếu số 0 đầu bị từ chối");
+    c.ok(!isValidAccountNumberFor("XYZ", "0071001234567"), "Mã ngân hàng lạ → không hợp lệ");
+
+    const deepLink = buildBankTransferDeepLink({
+      appId: "vcb",
+      bankBin: "970412",
+      accountNumber: "0071 0012 34567",
+      amount: 250000,
+      memo: "tiền ăn trưa",
+      accountName: "Nguyễn Minh",
+    });
+    c.eq(
+      deepLink,
+      "https://dl.vietqr.io/pay?app=vcb&ba=0071001234567@pvcb&am=250000&tn=tien%20an%20trua&bn=NGUYEN%20MINH",
+      "Deep Link điền sẵn: app người trả + ba=STK@mã ngân hàng nhận + am + tn + bn",
+    );
+    const base = { appId: "vcb", bankBin: "970436", accountNumber: "0071001234567" };
+    c.eq(buildBankTransferDeepLink({ ...base, bankBin: "97043" }), null, "BIN 5 số → null");
+    c.eq(buildBankTransferDeepLink({ ...base, accountNumber: "0071#001234" }), null, "STK có ký tự lạ → null");
+    c.eq(buildBankTransferDeepLink({ ...base, appId: "" }), null, "appId rỗng → null");
+    c.eq(buildBankTransferDeepLink({ ...base, bankBin: "970403" }), null, "BIN ngoài danh bạ → null (không đoán mã ngân hàng)");
+    c.eq(buildBankTransferDeepLink(base), "https://dl.vietqr.io/pay?app=vcb&ba=0071001234567@vcb", "Không số tiền / nội dung → chỉ app + ba");
+    c.ok(buildBankTransferDeepLink({ ...base, appId: "vib-2" }) !== null, "appId chính thức có gạch nối (vib-2) được chấp nhận");
+    c.eq(buildBankDeeplink("vcb"), "https://dl.vietqr.io/pay?app=vcb", "buildBankDeeplink cũ không đổi");
+    c.eq(buildMomoAppLink(), MOMO_APP_SCHEME, "Link mở Ví MoMo = momo://");
+  });
+
+  // F37 — Bộ giải mã VietQR EMVCo đầy đủ: tĩnh/động, thẻ, CRC, đầu vào rác, ánh xạ bản nháp người nhận
+  await suite.run("F37", "parseVietQr: QR tĩnh/động/thẻ, phát hiện sửa số tiền qua CRC, không ném lỗi với đầu vào rác", async (c) => {
+    const napasTemplate = (bin: string, account: string, service = "QRIBFTTA") =>
+      tlv("38", `${tlv("00", NAPAS_GUID)}${tlv("01", `${tlv("00", bin)}${tlv("01", account)}`)}${tlv("02", service)}`);
+    const baseFields = (amount: string) => [
+      tlv("00", "01"),
+      tlv("01", "12"),
+      napasTemplate("970436", "0071001234567"),
+      tlv("53", "704"),
+      tlv("54", amount),
+      tlv("58", "VN"),
+    ];
+
+    // (a) QR tĩnh không số tiền (Tag 01 = 11)
+    const staticQr = parseVietQr(buildVietQrPayload({ bankBin: "970436", accountNumber: "0071001234567" }));
+    c.ok(staticQr.ok && staticQr.errors.length === 0, "QR tĩnh hợp lệ, không có lỗi");
+    c.eq(staticQr.initiation, "STATIC", "Tag 01 = 11 → QR tĩnh");
+    c.eq(staticQr.amount, null, "QR tĩnh không có số tiền");
+    c.eq(staticQr.napas?.bin, "970436", "BIN Vietcombank (38.01.00)");
+    c.eq(staticQr.napas?.accountNumber, "0071001234567", "STK thụ hưởng (38.01.01)");
+    c.eq(staticQr.napas?.transferType, "ACCOUNT", "QRIBFTTA → chuyển tới tài khoản");
+    c.eq(staticQr.napas?.bank?.code, "VCB", "Tra BIN trong danh bạ → VCB");
+    c.ok(staticQr.crc.present && staticQr.crc.valid && staticQr.crc.actual === staticQr.crc.expected, "CRC-16 có mặt và hợp lệ");
+    c.ok(staticQr.currency === "704" && staticQr.countryCode === "VN", "Tiền tệ 704, quốc gia VN");
+
+    // (b) QR động: số tiền + 62.08 + 62.01 + một template tài khoản khác ở tag 26
+    const dynamicPayload = buildEmvPayload([
+      tlv("00", "01"),
+      tlv("01", "12"),
+      tlv("26", `${tlv("00", "A000000775")}${tlv("01", "MERCHANT01")}`),
+      napasTemplate("970436", "0071001234567"),
+      tlv("52", "5814"),
+      tlv("53", "704"),
+      tlv("54", "45000"),
+      tlv("58", "VN"),
+      tlv("59", "Cà Phê Mộc Miên"),
+      tlv("60", "HA NOI"),
+      tlv("61", "100000"),
+      tlv(
+        "62",
+        `${tlv("01", "HD0458")}${tlv("02", "0909123888")}${tlv("03", "CH01")}${tlv("05", "REF123")}${tlv("07", "QUAY1")}${tlv("08", "Thanh toán 2 cà phê")}`,
+      ),
+    ]);
+    const dynamicQr = parseVietQr(dynamicPayload);
+    c.ok(dynamicQr.ok, "QR động hợp lệ");
+    c.eq(dynamicQr.initiation, "DYNAMIC", "Tag 01 = 12 → QR động");
+    c.eq(dynamicQr.amount, 45_000, "Số tiền 45.000đ (Tag 54)");
+    c.eq(dynamicQr.merchantCategoryCode, "5814", "MCC 5814 (Tag 52)");
+    c.eq(dynamicQr.merchantName, "Cà Phê Mộc Miên", "Tên cửa hàng (Tag 59)");
+    c.ok(dynamicQr.merchantCity === "HA NOI" && dynamicQr.postalCode === "100000", "Thành phố (Tag 60) + mã bưu chính (Tag 61)");
+    const extra = dynamicQr.additionalData;
+    c.ok(
+      extra.billNumber === "HD0458" &&
+        extra.mobileNumber === "0909123888" &&
+        extra.storeLabel === "CH01" &&
+        extra.referenceLabel === "REF123" &&
+        extra.terminalLabel === "QUAY1" &&
+        extra.purpose === "Thanh toán 2 cà phê",
+      "Bóc đủ 62.01 / 02 / 03 / 05 / 07 / 08",
+    );
+    c.ok(
+      dynamicQr.otherAccountTemplates.length === 1 &&
+        dynamicQr.otherAccountTemplates[0]?.tag === "26" &&
+        dynamicQr.otherAccountTemplates[0]?.guid === "A000000775",
+      "Liệt kê template tài khoản khác (Tag 26)",
+    );
+    const legacy = decodeVietQr(dynamicPayload).decoded;
+    c.ok(
+      legacy?.bankBin === dynamicQr.napas?.bin &&
+        legacy?.accountNumber === dynamicQr.napas?.accountNumber &&
+        legacy?.amount === dynamicQr.amount &&
+        legacy?.purpose === dynamicQr.additionalData.purpose &&
+        legacy?.crc.valid === dynamicQr.crc.valid,
+      "Khớp kết quả decodeVietQr của VietQR Inspector",
+    );
+
+    // (c) QR chuyển tới số thẻ (QRIBFTTC)
+    const cardQr = parseVietQr(
+      buildVietQrPayload({ bankBin: "970436", accountNumber: "9704366614528888888", amount: 100_000, service: "QRIBFTTC" }),
+    );
+    c.ok(cardQr.ok, "QR chuyển tới thẻ hợp lệ");
+    c.ok(cardQr.napas?.serviceCode === "QRIBFTTC" && cardQr.napas.transferType === "CARD", "QRIBFTTC → chuyển tới số thẻ");
+    c.eq(cardQr.napas?.accountNumber, "9704366614528888888", "Bóc đúng số thẻ 19 số");
+    c.eq(toPayeeDraftFromQr(cardQr)?.serviceCode, "QRIBFTTC", "Bản nháp giữ loại dịch vụ thẻ");
+
+    // (d) Sửa số tiền sau khi tạo mã → CRC lệch
+    const tamperedPayload = dynamicPayload.replace("540545000", "540595000");
+    c.ok(tamperedPayload !== dynamicPayload, "Đã sửa số tiền 45.000 → 95.000 sau khi tạo mã");
+    const tampered = parseVietQr(tamperedPayload);
+    c.eq(tampered.crc.present, true, "Vẫn có trường CRC");
+    c.eq(tampered.crc.valid, false, "CRC không còn khớp → crc.valid = false");
+    c.ok(!tampered.ok && tampered.errors.some((error) => error.code === "CRC_INVALID"), "Báo lỗi CRC_INVALID");
+    c.eq(toPayeeDraftFromQr(tampered), null, "Mã bị sửa không được điền sẵn người nhận");
+
+    // (e) Rỗng / rác / quá 512 ký tự / sai kiểu → ok = false, không ném ngoại lệ
+    const junkInputs: unknown[] = [
+      "",
+      "   \n\t ",
+      "xin chao, chuyen tien gap!",
+      "0".repeat(600),
+      "6304ABCD",
+      dynamicPayload.slice(0, 40),
+      `${" ".repeat(50_000)}x`,
+      null,
+      undefined,
+      12345,
+    ];
+    let threw = false;
+    const junkResults = junkInputs.map((input) => {
+      try {
+        return parseVietQr(input as string);
+      } catch {
+        threw = true;
+        return null;
+      }
+    });
+    c.ok(!threw, "Không ném ngoại lệ với đầu vào rỗng / rác / sai kiểu");
+    c.ok(junkResults.every((result) => result !== null && !result.ok), "Mọi đầu vào rác → ok = false");
+    c.eq(parseVietQr("").errors[0]?.code, "EMPTY", "Chuỗi rỗng → EMPTY");
+    c.eq(parseVietQr("0".repeat(600)).errors[0]?.code, "TOO_LONG", "Quá 512 ký tự → TOO_LONG");
+    c.eq(parseVietQr("xin chao, chuyen tien gap!").errors[0]?.code, "INVALID_HEADER", "Văn bản thường → sai cấu trúc TLV");
+    const dotted = parseVietQr(buildEmvPayload(baseFields("45.000")));
+    c.ok(
+      !dotted.ok && dotted.amount === null && dotted.errors.some((error) => error.code === "INVALID_AMOUNT"),
+      "Số tiền '45.000' (mơ hồ 45 hay 45 nghìn) → INVALID_AMOUNT",
+    );
+    const doubled = parseVietQr(buildEmvPayload([...baseFields("45000"), tlv("54", "1")]));
+    c.ok(
+      !doubled.ok && doubled.errors.some((error) => error.code === "DUPLICATE_TAG" && error.tag === "54"),
+      "Hai Tag 54 trong cùng mã → DUPLICATE_TAG",
+    );
+
+    // (f) Khoảng trắng / xuống dòng / zero-width bao quanh
+    const wrapped = parseVietQr(`\u200B\uFEFF  \n${dynamicPayload}\r\n\t\u2060 `);
+    c.ok(wrapped.ok && wrapped.payload === dynamicPayload, "Bỏ khoảng trắng / xuống dòng / zero-width ở hai đầu");
+    c.ok(
+      wrapped.crc.valid && wrapped.amount === 45_000 && wrapped.napas?.accountNumber === "0071001234567",
+      "Vẫn đọc đúng CRC, số tiền, STK",
+    );
+
+    // (g) Bản nháp người nhận: BIN 970436 → VCB
+    const draft = toPayeeDraftFromQr(dynamicQr);
+    c.eq(draft?.institutionCode, "VCB", "BIN 970436 → mã VCB");
+    c.eq(draft?.accountNumber, "0071001234567", "Đúng STK");
+    c.eq(draft?.amount, 45_000, "Đúng số tiền");
+    c.eq(draft?.memo, "Thanh toan 2 ca phe", "Nội dung ưu tiên 62.08, đã bỏ dấu");
+    c.eq(draft?.accountName, "CA PHE MOC MIEN", "Tên Tag 59 chuẩn hóa IN HOA KHÔNG DẤU");
+    c.eq(draft?.serviceCode, "QRIBFTTA", "Dịch vụ chuyển tới tài khoản");
+    const billOnly = toPayeeDraftFromQr(parseVietQr(buildEmvPayload([...baseFields("45000"), tlv("62", tlv("01", "HD-0458"))])));
+    c.eq(billOnly?.memo, "HD 0458", "Không có 62.08 → dùng số hóa đơn 62.01");
+    c.eq(toPayeeDraftFromQr(staticQr)?.amount, null, "QR tĩnh → bản nháp không có số tiền");
+    const unknownBin = parseVietQr(buildVietQrPayload({ bankBin: "970403", accountNumber: "060123456789" }));
+    c.ok(unknownBin.ok && unknownBin.napas?.bank === null, "BIN ngoài danh bạ vẫn giải mã được (bank = null)");
+    c.eq(toPayeeDraftFromQr(unknownBin), null, "BIN lạ → không điền sẵn người nhận");
+    const momoDraft = toPayeeDraftFromQr(parseVietQr(buildVietQrPayload({ bankBin: "971025", accountNumber: "0909123888", amount: 50_000 })));
+    c.ok(momoDraft?.institutionCode === "MOMO" && momoDraft.accountNumber === "0909123888", "BIN 971025 → Ví MoMo theo SĐT");
   });
 
   suite.finish();

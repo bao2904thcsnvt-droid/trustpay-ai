@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Be_Vietnam_Pro, Inter, JetBrains_Mono } from "next/font/google";
 import { THEME_INIT_SCRIPT } from "@/lib/theme/theme";
 import { CINEMATIC_VIDEO_ORIGIN, FONT_AWESOME_URL, HERO_BOOT_SCRIPT } from "@/lib/cinematic/cinematic";
+import PwaRegister from "@/components/pwa/PwaRegister";
 import "./globals.css";
 
 /**
@@ -39,12 +40,18 @@ export const metadata: Metadata = {
   applicationName: "TrustPay AI",
   manifest: "/manifest.json",
   icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
   },
   appleWebApp: {
     capable: true,
     title: "TrustPay AI",
-    statusBarStyle: "black",
+    statusBarStyle: "black-translucent",
+    startupImage: [{ url: "/icons/icon-512.png" }],
   },
   formatDetection: { telephone: false },
 };
@@ -74,6 +81,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="min-h-full flex flex-col bg-slate-50 text-slate-900 font-sans selection:bg-[#d82d8b]/20 selection:text-[#a50064]">
         {children}
+        {/* Đăng ký Service Worker `/sw.js` tự động (bản Production) — điều kiện cài PWA / đóng gói APK qua PWABuilder. */}
+        <PwaRegister />
       </body>
     </html>
   );

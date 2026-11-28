@@ -81,6 +81,8 @@ import { buildQrOpsTicket, QR_DATA_TEXT, qrRecipientLabel } from "@/lib/qr/vietq
 import ThemeController from "@/components/theme/ThemeController";
 import QuickTip from "@/components/guide/QuickTip";
 import UserGuideModal, { type GuideTopicIndex } from "@/components/guide/UserGuideModal";
+import BeginnerGuideModal, { type BeginnerGuideStep } from "@/components/UserGuideModal";
+import AppDownloadBanner from "@/components/AppDownloadBanner";
 import PaymentCopilot from "@/components/user-wallet/PaymentCopilot";
 import CallShieldBar from "@/components/user-wallet/CallShieldBar";
 import QrInspector, { type QrCheckResult } from "@/components/user-wallet/QrInspector";
@@ -135,14 +137,14 @@ import AiCheckHelper from "@/components/hub/AiCheckHelper";
 import SaveTrustedPayeeCta from "@/components/hub/SaveTrustedPayeeCta";
 import AppLockModal from "@/components/security/AppLockModal";
 import AppLockSettings from "@/components/security/AppLockSettings";
-import PwaRegister from "@/components/pwa/PwaRegister";
 // Vòng 5 — Dark Cinematic Glassmorphism: Hero toàn màn hình + nền video sợi quang.
 import { isStandaloneDisplay, shouldSkipHero, type HeroTarget } from "@/lib/cinematic/cinematic";
 import { useMediaQuery, usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
 // Vòng 6 — Không gian Ứng dụng Di động: Tab Bar đáy, Chuyển/Rút liên ngân hàng, Liên kết ngân hàng.
 import MobileTabBar, { type MobileTab } from "@/components/mobile/MobileTabBar";
 import InterbankPanel, { type InterbankTab } from "@/components/mobile/InterbankPanel";
-import BankLinkingPanel from "@/components/mobile/BankLinkingPanel";
+import BankVaultManager, { type VaultAuditEvent } from "@/components/BankVaultManager";
+import { parseVietQr, toPayeeDraftFromQr } from "@/lib/vietqr";
 // Vòng 8 — Làm lại giao diện điện thoại: thanh ứng dụng gọn + menu bottom sheet, Trang chủ kiểu app ngân hàng.
 import MobileAppBar from "@/components/mobile/MobileAppBar";
 import MobileHome, { type HomeActionId } from "@/components/mobile/MobileHome";
@@ -301,6 +303,8 @@ export default function TrustPayApp() {
   const [tourDone, setTourDone] = useState<TourProgress>([false, false, false]);
   const [resetKey, setResetKey] = useState(0);
   const [guideTopic, setGuideTopic] = useState<GuideTopicIndex | null>(null);
+  /** Vòng 10 — Hướng dẫn người mới 7 bước (mở từ Header / menu / thẻ đầu Trang chủ). */
+  const [beginnerOpen, setBeginnerOpen] = useState(false);
   const [finopsOpen, setFinopsOpen] = useState(false);
   const [qrVerifiedCheckId, setQrVerifiedCheckId] = useState<string | null>(null);
   const [lastTrace, setLastTrace] = useState<AwsPipelineTrace | null>(null);
@@ -867,6 +871,7 @@ export default function TrustPayApp() {
 
   const handleCloseCooling = useCallback(() => setCoolingOpen(false), []);
   const closeGuide = useCallback(() => setGuideTopic(null), []);
+  const closeBeginnerGuide = useCallback(() => setBeginnerOpen(false), []);
   const closeFinops = useCallback(() => setFinopsOpen(false), []);
 
   const handleSendGuardianAlert = () => {
@@ -1302,6 +1307,52 @@ export default function TrustPayApp() {
       recipient: qrRecipientLabel(check.report),
       riskScore: check.finalScore,
       reasons: check.policy.reasons,
+    });
+  };
+
+  /**
+   * Vòng 10 — Quét QR ngoài đời → chuyển tiền THẬT (non-custodial). Bộ giải mã EMVCo `lib/vietqr.ts`
+   * chỉ trả người nhận khi CRC-16 + tag 38 (NAPAS) hợp lệ; điền sẵn vào màn hình chuyển tiền, Lá chắn
+   * AI + ngưỡng Thông tư 50 chạy lại, rồi Real Payment Handoff sinh VietQR động + Deep Link mở app
+   * ngân hàng / MoMo. TrustPay không giữ tiền nên không trừ số dư ví.
+   */
+  const handleQrRealTransfer = (check: QrCheckResult) => {
+    const payee = check.verdict === "DANGER" ? null : toPayeeDraftFromQr(parseVietQr(check.report.payload));
+    const institution = payee ? findInstitution(payee.institutionCode) : undefined;
+    if (!payee || !institution || check.amount <= 0) {
+      showToast({ type: "warning", title: t.qrReal.openBank, description: t.qrReal.noPayee });
+      return;
+    }
+    setPayeeDraft({
+      institutionCode: payee.institutionCode,
+      accountNumber: payee.accountNumber,
+      accountName: payee.accountName,
+    });
+    const recipient = payee.accountName ? `${payee.accountName} ${institution.shortName}` : institution.shortName;
+    setInputSeed((prev) => ({
+      nonce: prev.nonce + 1,
+      text: buildTransferCommand(check.amount, recipient, "thanh toán theo mã QR"),
+      scenarioId: null,
+      autoSubmit: true,
+      ...(payee.memo ? { memo: payee.memo } : {}),
+    }));
+    pendingHandoffFocusRef.current = true;
+    setActiveTab("user-wallet");
+    setActiveAgent("transfer");
+    setMobileTab("transfer");
+    setXferTab("transfer");
+    focusArea("tp-ai-result");
+    showToast({ type: "info", title: t.qrReal.toastTitle(institution.shortName), description: t.qrReal.toastDesc });
+  };
+
+  /** Két tài khoản chính chủ → chuỗi Audit SHA-256 (chỉ 4 số cuối, không STK đầy đủ / tên chủ TK). */
+  const handleVaultAudit = (event: VaultAuditEvent) => {
+    recordAudit("BANK_LINK", {
+      action: event.action,
+      institutionCode: event.institutionCode,
+      accountType: event.accountType,
+      last4: event.last4,
+      ...(event.method ? { method: event.method } : {}),
     });
   };
 
@@ -1756,6 +1807,99 @@ export default function TrustPayApp() {
     });
   };
 
+  // --------------------------------------------- Hướng dẫn người mới (7 bước)
+
+  const handleOpenBeginnerGuide = () => {
+    setShowOnboarding(false);
+    setGuideTopic(null);
+    setBeginnerOpen(true);
+    markGuideSeen();
+  };
+
+  /** Tin nhắn lừa đảo MẪU cho bản dùng thử Paste-to-Pay — STK nằm trong Blacklist demo nên bị chặn. */
+  const BEGINNER_PASTE_SAMPLE =
+    "Mẹ ơi con đang cấp cứu, chuyển gấp 5.000.000đ vào STK 999988887777 Vietcombank tên CAN BO DIEU TRA giúp con nhé";
+
+  /**
+   * "Dùng thử tính năng này": đóng hướng dẫn, mở đúng tính năng (kèm dữ liệu mẫu an toàn, không có
+   * STK thật của ai). Easy Mode giữ nguyên nếu tính năng có sẵn trong Easy Home; còn lại chuyển Pro.
+   */
+  const handleBeginnerTry = (step: BeginnerGuideStep) => {
+    setBeginnerOpen(false);
+    setShowOnboarding(false);
+    if (heroVisible) dismissHero();
+    if (preferencesStore.getSnapshot().embedMode || urlEmbedRef.current) exitEmbedMode();
+    const content = t.beginner.steps[["install", "banks", "scan", "transfer", "paste", "shield", "biometric"].indexOf(step)];
+    if (content) showToast({ type: "info", title: t.beginner.tryToast(content.title), description: content.summary });
+
+    const easy = hubStore.getSnapshot().uiMode === "easy";
+    if (easy) {
+      const easyPanelFor: Partial<Record<BeginnerGuideStep, EasyPanel>> = {
+        scan: "scan",
+        transfer: "transfer",
+        paste: "transfer",
+        shield: "check",
+      };
+      const panel = easyPanelFor[step];
+      if (panel) {
+        setEasyPanel(panel);
+        if (step === "scan") setCameraRequest((prev) => prev + 1);
+        if (step === "paste") handlePasteToPay(BEGINNER_PASTE_SAMPLE);
+        window.scrollTo({ top: 0 });
+        return;
+      }
+      setUiMode("pro");
+      setEasyPanel("home");
+    }
+
+    setActiveTab("user-wallet");
+    switch (step) {
+      case "install":
+        setMobileTab("home");
+        focusArea("tp-app-download");
+        return;
+      case "banks":
+        setMobileTab("banks");
+        focusArea(mobileShell ? "tp-linked-accounts" : "tp-bank-vault");
+        return;
+      case "scan":
+        setActiveAgent("qr");
+        setMobileTab("scan");
+        setCameraRequest((prev) => prev + 1);
+        focusArea("tp-qr-inspector");
+        return;
+      case "transfer": {
+        // Kịch bản an toàn (45.000đ, không STK) → Lá chắn AI chấm điểm ngay; muốn chuyển thật thì nhập người nhận.
+        const scenario = DEMO_SCENARIOS.find((item) => item.id === "scenario-1");
+        if (scenario) {
+          setInputSeed((prev) => ({ nonce: prev.nonce + 1, text: scenario.commandText, scenarioId: scenario.id, autoSubmit: true }));
+        }
+        setActiveAgent("transfer");
+        setMobileTab("transfer");
+        setXferTab("transfer");
+        focusArea("tp-transfer-panel");
+        return;
+      }
+      case "paste":
+        setMobileTab("transfer");
+        handlePasteToPay(BEGINNER_PASTE_SAMPLE);
+        return;
+      case "shield":
+        setActiveAgent("transfer");
+        setMobileTab("shield");
+        setShieldTool("check");
+        focusArea("tp-ai-check");
+        return;
+      case "biometric":
+        // Kịch bản mạo danh 12 triệu (≥ 10 triệu → Thông tư 50) — chỉ điền sẵn, người dùng tự bấm phân tích.
+        seedScenario3();
+        setActiveAgent("transfer");
+        setMobileTab("home");
+        focusArea("tp-guardian-card");
+        return;
+    }
+  };
+
   // --------------------------------------------- Hướng dẫn sử dụng & FinOps
 
   const handleOpenGuide = (topic: GuideTopicIndex = 0) => {
@@ -2074,6 +2218,7 @@ export default function TrustPayApp() {
         cameraRequest={cameraRequest}
         externalPayload={qrExternal}
         onExternalPayloadHandled={() => setQrExternal(null)}
+        onRealTransfer={handleQrRealTransfer}
       />
     </div>
   );
@@ -2141,6 +2286,23 @@ export default function TrustPayApp() {
   const mobileContent = (
     <>
       <div className={activeTab === "user-wallet" ? "flex min-w-0 flex-col gap-5" : "hidden"}>
+        {mobileTab === "home" && (
+          <button
+            type="button"
+            data-testid="tp-beginner-card"
+            onClick={handleOpenBeginnerGuide}
+            className="flex w-full cursor-pointer items-center gap-3 rounded-3xl border border-white/10 bg-[#090D16] p-4 text-left text-[#E6EAF2] shadow-xs transition-colors hover:bg-[#0f1522]"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold text-white">{t.beginner.cardTitle}</span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-[#9AA4B8]">{t.beginner.cardDesc}</span>
+            </span>
+            <span className="shrink-0 rounded-xl bg-gradient-to-r from-[#a50064] to-[#d82d8b] px-3 py-2 text-xs font-bold text-white">
+              {t.beginner.cardCta}
+            </span>
+          </button>
+        )}
+        {mobileTab === "home" && <AppDownloadBanner onToast={showToast} highlighted={highlightTarget === "tp-app-download"} />}
         {mobileTab === "home" && (
           <MobileHome
             balance={wallet.balance}
@@ -2225,7 +2387,13 @@ export default function TrustPayApp() {
 
         {mobileTab === "banks" && (
           <>
-            <BankLinkingPanel balance={wallet.balance} onToast={showToast} />
+            <BankVaultManager
+              onToast={showToast}
+              onAudit={handleVaultAudit}
+              requireUnlock={qrNeedsUnlock}
+              onRequestUnlock={() => setQrGateOpen(true)}
+              highlighted={highlightTarget === "tp-bank-vault"}
+            />
             <div className={`rounded-3xl ${highlightTarget === "tp-split-bill" ? "tp-highlight" : ""}`}>
               <SplitBill
                 key={`split-${resetKey}`}
@@ -2331,7 +2499,6 @@ export default function TrustPayApp() {
   return (
     <div className="tp-shell flex min-h-screen flex-col overflow-x-clip bg-slate-50">
       <ThemeController />
-      <PwaRegister />
 
       {/* Vòng 5 — nền video sợi quang cố định phía sau (không dùng trong iframe nhúng SDK). */}
       {!embedMode && (
@@ -2359,7 +2526,7 @@ export default function TrustPayApp() {
           onBack={opsOnMobile ? () => setActiveTab("user-wallet") : undefined}
           backLabel={t.app.backHome}
           onOpenOps={openOpsCenter}
-          onOpenGuide={() => handleOpenGuide(0)}
+          onOpenGuide={handleOpenBeginnerGuide}
           guideSeen={prefs.guideSeen}
           onOpenFinOps={() => setFinopsOpen(true)}
           embedMode={embedMode}
@@ -2377,7 +2544,7 @@ export default function TrustPayApp() {
           pendingAlertsCount={pendingAlertsCount}
           onOpenOnboarding={() => setShowOnboarding(true)}
           onReset={handleReset}
-          onOpenGuide={() => handleOpenGuide(0)}
+          onOpenGuide={handleOpenBeginnerGuide}
           guideSeen={prefs.guideSeen}
           onOpenFinOps={() => setFinopsOpen(true)}
           embedMode={embedMode}
@@ -2476,6 +2643,7 @@ export default function TrustPayApp() {
           </div>
 
           <div className="flex min-w-0 flex-col gap-6 lg:col-span-4">
+            <AppDownloadBanner onToast={showToast} highlighted={highlightTarget === "tp-app-download"} />
             <WalletSidebar
               walletBalance={wallet.balance}
               budgets={wallet.budgets}
@@ -2487,6 +2655,14 @@ export default function TrustPayApp() {
               guardianHighlighted={highlightTarget === "tp-guardian-card"}
               balanceHidden={hub.balanceHidden}
               onToggleBalance={handleToggleBalance}
+            />
+            <BankVaultManager
+              sectionId="tp-bank-vault"
+              onToast={showToast}
+              onAudit={handleVaultAudit}
+              requireUnlock={qrNeedsUnlock}
+              onRequestUnlock={() => setQrGateOpen(true)}
+              highlighted={highlightTarget === "tp-bank-vault"}
             />
             <div className={`rounded-3xl ${highlightTarget === "tp-split-bill" ? "tp-highlight" : ""}`}>
               <SplitBill
@@ -2660,6 +2836,16 @@ export default function TrustPayApp() {
         />
       )}
 
+      {beginnerOpen && (
+        <BeginnerGuideModal
+          onClose={closeBeginnerGuide}
+          onTryStep={handleBeginnerTry}
+          onOpenAdvanced={() => {
+            setBeginnerOpen(false);
+            handleOpenGuide(0);
+          }}
+        />
+      )}
       {guideTopic !== null && (
         <UserGuideModal initialTopic={guideTopic} onClose={closeGuide} onTryNow={handleGuideTryNow} />
       )}

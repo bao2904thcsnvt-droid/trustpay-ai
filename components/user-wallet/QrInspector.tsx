@@ -7,6 +7,7 @@ import {
   Ban,
   CheckCircle2,
   Fingerprint,
+  Landmark,
   Loader2,
   QrCode,
   ScanLine,
@@ -25,6 +26,7 @@ import {
   type QrVerdict,
 } from "@/lib/qr/vietqr-inspector";
 import type { TlvField } from "@/lib/qr/emvco";
+import { parseVietQr, toPayeeDraftFromQr } from "@/lib/vietqr";
 import { requestTransactionAnalysis } from "@/lib/aws/pipeline-trace";
 import { expandBlacklistForText, mergeBlacklist } from "@/lib/wallet/blacklist-patterns";
 import { ANOMALY_CLUSTER_PATTERN } from "@/lib/ops/anomaly-cluster";
@@ -65,6 +67,12 @@ export interface QrInspectorProps {
   externalPayload?: { nonce: number; payload: string } | null;
   /** Báo đã nhận `externalPayload` để cha xóa đi (tránh soi lại khi panel remount). */
   onExternalPayloadHandled?: () => void;
+  /**
+   * Vòng 10 — chuyển tiền THẬT (non-custodial): điền sẵn người nhận đọc từ mã QR (parser EMVCo
+   * `lib/vietqr.ts`, CRC-16 hợp lệ) vào màn hình chuyển tiền; Lá chắn AI + Thông tư 50 chạy lại,
+   * sau đó Real Payment Handoff sinh VietQR động + Deep Link mở app ngân hàng / MoMo.
+   */
+  onRealTransfer?: (check: QrCheckResult) => void;
 }
 
 type ImageStatus = "idle" | "decoding" | "decoded" | "unsupported" | "not-found";
@@ -150,6 +158,7 @@ export default function QrInspector({
   cameraRequest = 0,
   externalPayload = null,
   onExternalPayloadHandled,
+  onRealTransfer,
 }: QrInspectorProps) {
   const { t, money, category: categoryLabel, data } = useI18n();
   const features = useFeatureState();
@@ -352,6 +361,9 @@ export default function QrInspector({
   const budgetRemaining = budget ? budget.limit - budget.spent : null;
   const needsFace = Boolean(activeCheck?.policy.requireBiometric) && verifiedCheckId !== activeCheck?.id;
   const isPaid = activeCheck !== null && paidCheckId === activeCheck.id;
+  /** Có người nhận NAPAS hợp lệ (tag 38 + CRC-16 đúng) để mở app ngân hàng hay không. */
+  const realPayee = activeCheck ? toPayeeDraftFromQr(parseVietQr(activeCheck.report.payload)) : null;
+  const crcBroken = Boolean(decoded?.crc.present && !decoded.crc.valid);
 
   const handlePay = () => {
     if (!activeCheck) return;
@@ -622,6 +634,23 @@ export default function QrInspector({
                 </p>
               )}
               {payError && <p className="text-[11px] font-semibold text-rose-700">{payError}</p>}
+              {onRealTransfer && (
+                <>
+                  <button
+                    type="button"
+                    data-testid="tp-qr-open-bank"
+                    disabled={!realPayee || activeCheck.amount <= 0 || context.status === "pending"}
+                    onClick={() => onRealTransfer(activeCheck)}
+                    className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#a50064] to-[#d82d8b] px-4 py-3 text-sm font-bold text-white shadow-md shadow-[#a50064]/25 transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Landmark className="h-4 w-4" />
+                    {t.qrReal.openBank}
+                  </button>
+                  <p className={`text-[11px] ${realPayee ? "text-slate-500" : "font-semibold text-amber-700"}`}>
+                    {crcBroken ? t.qrReal.crcBroken : realPayee ? t.qrReal.hint : t.qrReal.noPayee}
+                  </p>
+                </>
+              )}
               {needsFace ? (
                 <button
                   type="button"
@@ -636,9 +665,13 @@ export default function QrInspector({
                   type="button"
                   disabled={activeCheck.amount <= 0 || context.status === "pending"}
                   onClick={handlePay}
-                  className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#a50064] to-[#d82d8b] px-4 py-3 text-sm font-bold text-white shadow-md shadow-[#a50064]/25 transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                  className={
+                    onRealTransfer
+                      ? "inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      : "inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#a50064] to-[#d82d8b] px-4 py-3 text-sm font-bold text-white shadow-md shadow-[#a50064]/25 transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                  }
                 >
-                  {t.qr.pay(money(activeCheck.amount))}
+                  {onRealTransfer ? t.qrReal.walletPay(money(activeCheck.amount)) : t.qr.pay(money(activeCheck.amount))}
                   <ArrowRight className="h-4 w-4" />
                 </button>
               )}

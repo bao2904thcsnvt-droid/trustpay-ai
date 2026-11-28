@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { createPersistentStore } from "@/lib/store/persistent-store";
-import { isPayeeInstitutionCode, type PayeeInstitutionCode } from "@/lib/payments/banks";
+import { findInstitution, isPayeeInstitutionCode, type PayeeInstitutionCode } from "@/lib/payments/banks";
 import { normalizeAccountNumber, sanitizeAccountName } from "@/lib/payments/vietqr-builder";
 import { sha256HexSync } from "@/lib/crypto/sha256";
 
@@ -11,7 +11,10 @@ import { sha256HexSync } from "@/lib/crypto/sha256";
  *  - Tài khoản & Ví liên kết (nguồn tiền mặc định → mở đúng app ngân hàng khi chuyển thật).
  *  - Danh bạ Tin cậy (chuyển 1 chạm).
  *  - Cấu hình Khóa ứng dụng (passkey WebAuthn + PIN 6 số dự phòng, chỉ lưu dạng băm).
- * Dữ liệu đọc lại luôn đi qua `sanitizeHubState` (coi như KHÔNG tin cậy).
+ *  - Vòng 9 — Két tài khoản chính chủ (Bank Vault): loại tài khoản, trạng thái xác thực chính chủ
+ *    (VietQR 1.000đ / passkey / PIN) và tài khoản NHẬN tiền mặc định.
+ * Dữ liệu đọc lại luôn đi qua `sanitizeHubState` (coi như KHÔNG tin cậy). Dữ liệu cũ thiếu trường
+ * vòng 9 được điền mặc định (CHECKING / WALLET, chưa xác thực, chưa có tài khoản nhận mặc định).
  */
 
 export const HUB_STORAGE_KEY = "trustpay-ai.hub.v1";
@@ -26,6 +29,19 @@ export type PayeeRelation = "FAMILY" | "SHOP" | "LANDLORD" | "FRIEND" | "OTHER";
 
 export const PAYEE_RELATIONS: readonly PayeeRelation[] = ["FAMILY", "SHOP", "LANDLORD", "FRIEND", "OTHER"];
 
+/** Vòng 9 — loại tài khoản chính chủ: Thanh toán / Tiết kiệm / Ví liên kết (ví điện tử). */
+export type LinkedAccountType = "CHECKING" | "SAVINGS" | "WALLET";
+
+export const LINKED_ACCOUNT_TYPES: readonly LinkedAccountType[] = ["CHECKING", "SAVINGS", "WALLET"];
+
+/**
+ * Cách người dùng tự xác nhận quyền sở hữu tài khoản (TrustPay không giữ tiền, không đọc sao kê):
+ * chuyển thử 1.000đ qua VietQR (đối chiếu tên chủ TK do NAPAS tra cứu), passkey thiết bị, hoặc PIN.
+ */
+export type LinkedAccountVerifyMethod = "VIETQR_1000" | "PASSKEY" | "PIN";
+
+export const LINKED_ACCOUNT_VERIFY_METHODS: readonly LinkedAccountVerifyMethod[] = ["VIETQR_1000", "PASSKEY", "PIN"];
+
 export interface LinkedAccount {
   id: string;
   institutionCode: PayeeInstitutionCode;
@@ -36,6 +52,28 @@ export interface LinkedAccount {
   holderName: string;
   /** Tài khoản mẫu của bản demo — chưa có STK đầy đủ. */
   demo: boolean;
+  /**
+   * Vòng 9 — loại tài khoản. Tùy chọn ở kiểu ĐẦU VÀO để nơi gọi cũ (BankLinkingPanel,
+   * LinkedAccountsBar) vẫn biên dịch; dữ liệu trong store luôn có (xem `StoredLinkedAccount`).
+   * Mặc định: WALLET cho ví điện tử, CHECKING cho ngân hàng.
+   */
+  accountType?: LinkedAccountType;
+  /** Thời điểm xác thực chính chủ (ISO 8601) — `null`: chưa xác thực. */
+  verifiedAt?: string | null;
+  verifyMethod?: LinkedAccountVerifyMethod | null;
+}
+
+/** Tài khoản đã qua `sanitize` trong store — luôn đủ các trường vòng 9. */
+export interface StoredLinkedAccount extends LinkedAccount {
+  accountType: LinkedAccountType;
+  verifiedAt: string | null;
+  verifyMethod: LinkedAccountVerifyMethod | null;
+}
+
+/** Tham số tùy chọn khi thêm / hoàn thiện tài khoản (nơi gọi cũ bỏ qua được). */
+export interface LinkedAccountWriteOptions {
+  /** Loại tài khoản; tự ép về giá trị hợp lệ theo ngân hàng / ví (`resolveAccountType`). */
+  accountType?: LinkedAccountType;
 }
 
 export interface TrustedPayee {
@@ -63,8 +101,10 @@ export interface HubState {
   schemaVersion: 1;
   uiMode: UiMode;
   balanceHidden: boolean;
-  linkedAccounts: LinkedAccount[];
+  linkedAccounts: StoredLinkedAccount[];
   defaultSourceId: string;
+  /** Vòng 9 — tài khoản NHẬN tiền mặc định; chỉ trỏ tới tài khoản có STK đầy đủ, ngược lại `null`. */
+  defaultReceiveId: string | null;
   trustedPayees: TrustedPayee[];
   appLock: AppLockSettings;
 }
@@ -77,14 +117,49 @@ export function isValidPin(pin: string): boolean {
   return /^\d{6}$/.test(pin);
 }
 
+/** Loại tài khoản mặc định: ví điện tử → WALLET, ngân hàng → CHECKING. */
+export function defaultAccountType(institutionCode: PayeeInstitutionCode): LinkedAccountType {
+  return findInstitution(institutionCode)?.kind === "EWALLET" ? "WALLET" : "CHECKING";
+}
+
+/** Ép loại tài khoản về giá trị hợp lệ: ví điện tử luôn WALLET; ngân hàng chỉ CHECKING / SAVINGS. */
+export function resolveAccountType(institutionCode: PayeeInstitutionCode, requested: unknown): LinkedAccountType {
+  if (defaultAccountType(institutionCode) === "WALLET") return "WALLET";
+  return requested === "SAVINGS" ? "SAVINGS" : "CHECKING";
+}
+
+/** Đã xác thực chính chủ (có STK đầy đủ + phương thức + thời điểm hợp lệ). */
+export function isLinkedAccountVerified(account: Pick<LinkedAccount, "accountNumber" | "verifiedAt" | "verifyMethod">): boolean {
+  return account.accountNumber !== "" && Boolean(account.verifiedAt) && Boolean(account.verifyMethod);
+}
+
+/** Điều kiện để giao diện cho đặt "Nhận tiền mặc định": STK đầy đủ + đã xác thực chính chủ. */
+export function canBeDefaultReceive(account: Pick<LinkedAccount, "accountNumber" | "verifiedAt" | "verifyMethod">): boolean {
+  return isLinkedAccountVerified(account);
+}
+
 const DEFAULT_CREATED_AT = "2026-11-20T02:00:00.000Z";
 
-function createDefaultLinkedAccounts(): LinkedAccount[] {
+function demoAccount(id: string, institutionCode: PayeeInstitutionCode, last4: string): StoredLinkedAccount {
+  return {
+    id,
+    institutionCode,
+    accountNumber: "",
+    last4,
+    holderName: "BAN GIAM KHAO",
+    demo: true,
+    accountType: defaultAccountType(institutionCode),
+    verifiedAt: null,
+    verifyMethod: null,
+  };
+}
+
+function createDefaultLinkedAccounts(): StoredLinkedAccount[] {
   return [
-    { id: "ACC-PVCB", institutionCode: "PVCB", accountNumber: "", last4: "4128", holderName: "BAN GIAM KHAO", demo: true },
-    { id: "ACC-VCB", institutionCode: "VCB", accountNumber: "", last4: "9821", holderName: "BAN GIAM KHAO", demo: true },
-    { id: "ACC-MB", institutionCode: "MB", accountNumber: "", last4: "5502", holderName: "BAN GIAM KHAO", demo: true },
-    { id: "ACC-MOMO", institutionCode: "MOMO", accountNumber: "", last4: "888", holderName: "BAN GIAM KHAO", demo: true },
+    demoAccount("ACC-PVCB", "PVCB", "4128"),
+    demoAccount("ACC-VCB", "VCB", "9821"),
+    demoAccount("ACC-MB", "MB", "5502"),
+    demoAccount("ACC-MOMO", "MOMO", "888"),
   ];
 }
 
@@ -133,6 +208,7 @@ export function createDefaultHubState(): HubState {
     balanceHidden: false,
     linkedAccounts: createDefaultLinkedAccounts(),
     defaultSourceId: "ACC-PVCB",
+    defaultReceiveId: null,
     trustedPayees: createDefaultTrustedPayees(),
     appLock: {
       enabled: false,
@@ -155,7 +231,11 @@ function safeIso(value: unknown): string | null {
   return typeof value === "string" && value.length <= 40 && !Number.isNaN(Date.parse(value)) ? value : null;
 }
 
-function sanitizeLinkedAccount(raw: unknown): LinkedAccount | null {
+function safeVerifyMethod(value: unknown): LinkedAccountVerifyMethod | null {
+  return LINKED_ACCOUNT_VERIFY_METHODS.find((item) => item === value) ?? null;
+}
+
+function sanitizeLinkedAccount(raw: unknown): StoredLinkedAccount | null {
   const record = asRecord(raw);
   if (!record) return null;
   const id = safeId(record.id);
@@ -166,6 +246,10 @@ function sanitizeLinkedAccount(raw: unknown): LinkedAccount | null {
   const last4Raw = typeof record.last4 === "string" ? record.last4.replace(/\D/g, "").slice(-4) : "";
   const last4 = validAccount ? validAccount.slice(-4) : last4Raw;
   if (!last4) return null;
+  // Xác thực chỉ có nghĩa khi có STK đầy đủ và đủ CẢ phương thức lẫn thời điểm hợp lệ.
+  const verifyMethod = safeVerifyMethod(record.verifyMethod);
+  const verifiedAt = safeIso(record.verifiedAt);
+  const verified = Boolean(validAccount && verifyMethod && verifiedAt);
   return {
     id,
     institutionCode: record.institutionCode,
@@ -173,6 +257,9 @@ function sanitizeLinkedAccount(raw: unknown): LinkedAccount | null {
     last4,
     holderName: typeof record.holderName === "string" ? sanitizeAccountName(record.holderName) : "",
     demo: record.demo === true && !validAccount,
+    accountType: resolveAccountType(record.institutionCode, record.accountType),
+    verifiedAt: verified ? verifiedAt : null,
+    verifyMethod: verified ? verifyMethod : null,
   };
 }
 
@@ -199,6 +286,12 @@ function sanitizeTrustedPayee(raw: unknown): TrustedPayee | null {
   };
 }
 
+/** `defaultReceiveId` hợp lệ khi trỏ tới tài khoản có STK đầy đủ; sai / thiếu → `null`. */
+function resolveDefaultReceiveId(value: unknown, accounts: readonly StoredLinkedAccount[]): string | null {
+  if (typeof value !== "string") return null;
+  return accounts.some((item) => item.id === value && item.accountNumber !== "") ? value : null;
+}
+
 export function sanitizeHubState(raw: unknown): HubState {
   const defaults = createDefaultHubState();
   const record = asRecord(raw);
@@ -207,7 +300,7 @@ export function sanitizeHubState(raw: unknown): HubState {
   const linkedAccounts = Array.isArray(record.linkedAccounts)
     ? record.linkedAccounts
         .map(sanitizeLinkedAccount)
-        .filter((item): item is LinkedAccount => item !== null)
+        .filter((item): item is StoredLinkedAccount => item !== null)
         .filter((item, index, list) => list.findIndex((other) => other.id === item.id) === index)
         .slice(0, MAX_LINKED_ACCOUNTS)
     : defaults.linkedAccounts;
@@ -241,6 +334,7 @@ export function sanitizeHubState(raw: unknown): HubState {
     balanceHidden: record.balanceHidden === true,
     linkedAccounts: accounts,
     defaultSourceId,
+    defaultReceiveId: resolveDefaultReceiveId(record.defaultReceiveId, accounts),
     trustedPayees,
     appLock: { enabled: lock?.enabled === true, passkeyId, pinSalt, pinHash },
   };
@@ -272,45 +366,116 @@ export function setDefaultSource(id: string): void {
   );
 }
 
-export function addLinkedAccount(account: LinkedAccount, makeDefault: boolean): void {
+/**
+ * Đặt / bỏ tài khoản NHẬN tiền mặc định. Chỉ nhận tài khoản có STK đầy đủ (giao diện Két còn yêu
+ * cầu đã xác thực chính chủ — `canBeDefaultReceive`); id sai → giữ nguyên.
+ */
+export function setDefaultReceive(id: string | null): void {
   hubStore.setState((prev) => {
-    const clean = sanitizeLinkedAccount(account);
-    if (!clean || prev.linkedAccounts.length >= MAX_LINKED_ACCOUNTS) return prev;
+    if (id === null) return prev.defaultReceiveId === null ? prev : { ...prev, defaultReceiveId: null };
+    if (prev.defaultReceiveId === id) return prev;
+    return prev.linkedAccounts.some((item) => item.id === id && item.accountNumber !== "") ? { ...prev, defaultReceiveId: id } : prev;
+  });
+}
+
+/** Ghi nhận xác thực chính chủ thành công (chỉ cho tài khoản có STK đầy đủ, thời điểm ISO hợp lệ). */
+export function markLinkedAccountVerified(id: string, method: LinkedAccountVerifyMethod, atIso: string): void {
+  const verifyMethod = safeVerifyMethod(method);
+  const verifiedAt = safeIso(atIso);
+  if (!verifyMethod || !verifiedAt) return;
+  hubStore.setState((prev) => {
+    if (!prev.linkedAccounts.some((item) => item.id === id && item.accountNumber !== "")) return prev;
+    return {
+      ...prev,
+      linkedAccounts: prev.linkedAccounts.map((item) => (item.id === id ? { ...item, verifiedAt, verifyMethod } : item)),
+    };
+  });
+}
+
+/**
+ * Thêm tài khoản / ví liên kết. Trả về id của tài khoản trong store (id mới, hoặc id của tài khoản
+ * trùng ngân hàng + STK đã có), `null` nếu dữ liệu không hợp lệ hoặc đã đủ `MAX_LINKED_ACCOUNTS`.
+ */
+export function addLinkedAccount(account: LinkedAccount, makeDefault: boolean, options: LinkedAccountWriteOptions = {}): string | null {
+  let resultId: string | null = null;
+  hubStore.setState((prev) => {
+    const clean = sanitizeLinkedAccount(options.accountType ? { ...account, accountType: options.accountType } : account);
+    if (!clean) return prev;
     const duplicate = prev.linkedAccounts.find(
       (item) => item.institutionCode === clean.institutionCode && item.accountNumber && item.accountNumber === clean.accountNumber,
     );
     if (duplicate) {
-      return makeDefault ? { ...prev, defaultSourceId: duplicate.id } : prev;
+      resultId = duplicate.id;
+      return makeDefault && prev.defaultSourceId !== duplicate.id ? { ...prev, defaultSourceId: duplicate.id } : prev;
     }
+    if (prev.linkedAccounts.length >= MAX_LINKED_ACCOUNTS || prev.linkedAccounts.some((item) => item.id === clean.id)) {
+      return prev;
+    }
+    resultId = clean.id;
     return {
       ...prev,
       linkedAccounts: [...prev.linkedAccounts, clean],
       defaultSourceId: makeDefault ? clean.id : prev.defaultSourceId,
     };
   });
+  return resultId;
 }
 
-/** Hoàn thiện STK đầy đủ cho một tài khoản mẫu (để tạo mã VietQR thu tiền thật). */
-export function completeLinkedAccount(id: string, accountNumber: string, holderName: string): void {
-  hubStore.setState((prev) => ({
-    ...prev,
-    linkedAccounts: prev.linkedAccounts.map((item) => {
-      if (item.id !== id) return item;
-      const updated = sanitizeLinkedAccount({ ...item, accountNumber, holderName: holderName || item.holderName, demo: false });
-      return updated ?? item;
-    }),
-  }));
-}
-
-export function removeLinkedAccount(id: string): void {
+/**
+ * Hoàn thiện STK đầy đủ cho một tài khoản mẫu (để tạo mã VietQR thu tiền thật). STK thay đổi → xác
+ * thực chính chủ cũ bị hủy và tài khoản không còn là "Nhận tiền mặc định" (phải xác thực lại).
+ * Trả về `false` nếu không tìm thấy tài khoản, STK không hợp lệ hoặc trùng tài khoản khác cùng ngân hàng.
+ */
+export function completeLinkedAccount(
+  id: string,
+  accountNumber: string,
+  holderName: string,
+  options: LinkedAccountWriteOptions = {},
+): boolean {
+  let applied = false;
   hubStore.setState((prev) => {
-    if (prev.linkedAccounts.length <= 1) return prev;
+    const target = prev.linkedAccounts.find((item) => item.id === id);
+    if (!target) return prev;
+    const normalized = normalizeAccountNumber(accountNumber).slice(0, 19);
+    const duplicate = prev.linkedAccounts.some(
+      (item) => item.id !== id && item.institutionCode === target.institutionCode && item.accountNumber !== "" && item.accountNumber === normalized,
+    );
+    if (duplicate) return prev;
+    const numberChanged = normalized !== target.accountNumber;
+    const updated = sanitizeLinkedAccount({
+      ...target,
+      accountNumber: normalized,
+      holderName: holderName || target.holderName,
+      demo: false,
+      accountType: options.accountType ?? target.accountType,
+      verifiedAt: numberChanged ? null : target.verifiedAt,
+      verifyMethod: numberChanged ? null : target.verifyMethod,
+    });
+    if (!updated || !updated.accountNumber) return prev;
+    applied = true;
+    return {
+      ...prev,
+      linkedAccounts: prev.linkedAccounts.map((item) => (item.id === id ? updated : item)),
+      defaultReceiveId: numberChanged && prev.defaultReceiveId === id ? null : prev.defaultReceiveId,
+    };
+  });
+  return applied;
+}
+
+/** Gỡ liên kết (luôn giữ ít nhất 1 tài khoản); dọn nguồn chuyển & tài khoản nhận mặc định. Trả về `true` nếu đã gỡ. */
+export function removeLinkedAccount(id: string): boolean {
+  let removed = false;
+  hubStore.setState((prev) => {
+    if (prev.linkedAccounts.length <= 1 || !prev.linkedAccounts.some((item) => item.id === id)) return prev;
     const linkedAccounts = prev.linkedAccounts.filter((item) => item.id !== id);
     const defaultSourceId = linkedAccounts.some((item) => item.id === prev.defaultSourceId)
       ? prev.defaultSourceId
       : linkedAccounts[0].id;
-    return { ...prev, linkedAccounts, defaultSourceId };
+    const defaultReceiveId = prev.defaultReceiveId === id ? null : prev.defaultReceiveId;
+    removed = true;
+    return { ...prev, linkedAccounts, defaultSourceId, defaultReceiveId };
   });
+  return removed;
 }
 
 export function addTrustedPayee(payee: TrustedPayee): void {

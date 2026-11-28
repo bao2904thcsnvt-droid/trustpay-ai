@@ -3,8 +3,8 @@
  * - Không bao giờ lưu phản hồi /api/* (dữ liệu giao dịch, phân tích rủi ro).
  * - Chỉ lưu yêu cầu GET cùng origin.
  */
-const CACHE_NAME = "trustpay-ai-shell-v1";
-const PRECACHE = ["/", "/manifest.json", "/icon.svg"];
+const CACHE_NAME = "trustpay-ai-shell-v2";
+const PRECACHE = ["/", "/manifest.json", "/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -29,7 +29,8 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
+  // Bỏ qua /api/* (dữ liệu giao dịch) và tệp cài đặt .apk (tải thẳng từ máy chủ, không lưu cache).
+  if (url.origin !== self.location.origin || url.pathname.startsWith("/api/") || url.pathname.endsWith(".apk")) return;
 
   event.respondWith(
     fetch(request)

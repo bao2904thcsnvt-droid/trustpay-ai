@@ -1,53 +1,17 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { useHasMounted } from "@/lib/hooks/use-has-mounted";
 import { useI18n } from "@/components/i18n/I18nProvider";
-
-interface BeforeInstallPromptEventLike extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-}
-
-// Sự kiện `beforeinstallprompt` có thể đến trước khi React gắn → giữ ở cấp module.
-let deferredPrompt: BeforeInstallPromptEventLike | null = null;
-let installedFlag = false;
-const listeners = new Set<() => void>();
-const emit = () => listeners.forEach((listener) => listener());
-
-if (typeof window !== "undefined") {
-  window.addEventListener("beforeinstallprompt", (event) => {
-    event.preventDefault();
-    deferredPrompt = event as BeforeInstallPromptEventLike;
-    emit();
-  });
-  window.addEventListener("appinstalled", () => {
-    deferredPrompt = null;
-    installedFlag = true;
-    emit();
-  });
-}
-
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-};
-const getPromptSnapshot = () => deferredPrompt;
-const getServerPromptSnapshot = () => null;
-
-function isStandalone(): boolean {
-  if (typeof window === "undefined") return false;
-  const nav = navigator as Navigator & { standalone?: boolean };
-  return installedFlag || window.matchMedia?.("(display-mode: standalone)").matches === true || nav.standalone === true;
-}
+import { isStandaloneApp, runInstallPrompt, useInstallPrompt } from "@/lib/pwa/install-prompt";
 
 /** Nút "📲 Cài App lên Điện thoại" (PWA): prompt gốc trên Chrome/Edge/Android, hướng dẫn trên iOS. */
 export default function InstallAppButton({ onInstalled }: { onInstalled?: () => void }) {
   const { t } = useI18n();
   const mounted = useHasMounted();
-  const prompt = useSyncExternalStore(subscribe, getPromptSnapshot, getServerPromptSnapshot);
+  const prompt = useInstallPrompt();
   const [guideOpen, setGuideOpen] = useState(false);
 
   useEffect(() => {
@@ -59,24 +23,15 @@ export default function InstallAppButton({ onInstalled }: { onInstalled?: () => 
     return () => window.removeEventListener("keydown", onKey);
   }, [guideOpen]);
 
-  if (!mounted || isStandalone()) {
+  if (!mounted || isStandaloneApp()) {
     return null;
   }
 
   const handleClick = async () => {
     if (prompt) {
-      try {
-        await prompt.prompt();
-        const choice = await prompt.userChoice;
-        if (choice.outcome === "accepted") {
-          deferredPrompt = null;
-          installedFlag = true;
-          emit();
-          onInstalled?.();
-        }
-      } catch {
-        setGuideOpen(true);
-      }
+      const outcome = await runInstallPrompt();
+      if (outcome === "accepted") onInstalled?.();
+      else if (outcome === "unavailable") setGuideOpen(true);
       return;
     }
     setGuideOpen(true);

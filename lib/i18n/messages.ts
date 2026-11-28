@@ -6,6 +6,12 @@ import { enExtR4, viExtR4, type ExtR4Messages } from "@/lib/i18n/messages-ext-r4
 import { enExtR5, viExtR5, type ExtR5Messages } from "@/lib/i18n/messages-ext-r5";
 import { enExtR7, viExtR7, type ExtR7Messages } from "@/lib/i18n/messages-ext-r7";
 import { enExtR8, viExtR8, type ExtR8Messages } from "@/lib/i18n/messages-ext-r8";
+import { enExtR9, viExtR9, type ExtR9Messages } from "@/lib/i18n/messages-ext-r9";
+import { enExtR9Scan, viExtR9Scan, type ExtR9ScanMessages } from "@/lib/i18n/messages-ext-r9-scan";
+import { enExtR9Vault, viExtR9Vault, type ExtR9VaultMessages } from "@/lib/i18n/messages-ext-r9-vault";
+import { enExtR10Real, viExtR10Real, type ExtR10RealMessages } from "@/lib/i18n/messages-ext-r10-real";
+import { enExtR10Pwa, viExtR10Pwa, type ExtR10PwaMessages } from "@/lib/i18n/messages-ext-r10-pwa";
+import { enExtR10Guide, viExtR10Guide, type ExtR10GuideMessages } from "@/lib/i18n/messages-ext-r10-guide";
 
 /**
  * Từ điển giao diện VI/EN của TrustPay AI. Bản tiếng Anh dùng chung kiểu
@@ -606,7 +612,21 @@ const viCore = {
 };
 
 /** Vòng 2: trộn từ điển bổ sung (theme, hướng dẫn, VietQR, Call Shield, Copilot, FinOps). */
-const vi = { ...viCore, ...viExt, ...viExtR3, ...viExtR4, ...viExtR5, ...viExtR7, ...viExtR8 };
+const vi = {
+  ...viCore,
+  ...viExt,
+  ...viExtR3,
+  ...viExtR4,
+  ...viExtR5,
+  ...viExtR7,
+  ...viExtR8,
+  ...viExtR9,
+  ...viExtR9Scan,
+  ...viExtR9Vault,
+  ...viExtR10Real,
+  ...viExtR10Pwa,
+  ...viExtR10Guide,
+};
 
 export type Messages = typeof vi;
 
@@ -618,6 +638,12 @@ const enCore: Omit<
   | keyof ExtR5Messages
   | keyof ExtR7Messages
   | keyof ExtR8Messages
+  | keyof ExtR9Messages
+  | keyof ExtR9ScanMessages
+  | keyof ExtR9VaultMessages
+  | keyof ExtR10RealMessages
+  | keyof ExtR10PwaMessages
+  | keyof ExtR10GuideMessages
 > = {
   common: {
     appName: "TrustPay AI",
@@ -1131,6 +1157,20 @@ const enCore: Omit<
   },
 };
 
-const en: Messages = { ...enCore, ...enExt, ...enExtR3, ...enExtR4, ...enExtR5, ...enExtR7, ...enExtR8 };
+const en: Messages = {
+  ...enCore,
+  ...enExt,
+  ...enExtR3,
+  ...enExtR4,
+  ...enExtR5,
+  ...enExtR7,
+  ...enExtR8,
+  ...enExtR9,
+  ...enExtR9Scan,
+  ...enExtR9Vault,
+  ...enExtR10Real,
+  ...enExtR10Pwa,
+  ...enExtR10Guide,
+};
 
 export const MESSAGES: Record<AppLanguage, Messages> = { vi, en };

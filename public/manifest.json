@@ -1,25 +1,71 @@
 {
+  "id": "/",
   "name": "TrustPay AI",
   "short_name": "TrustPay",
   "description": "Ứng dụng thanh toán hợp nhất: Lá chắn AI chống lừa đảo, liên kết ngân hàng, chuyển/rút tiền liên ngân hàng bằng VietQR, quét QR bằng camera.",
-  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#090D16",
+  "theme_color": "#090D16",
   "lang": "vi",
   "dir": "ltr",
-  "categories": ["finance", "security", "productivity"],
+  "categories": [
+    "finance",
+    "security",
+    "productivity"
+  ],
   "icons": [
-    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" },
-    { "src": "/apple-icon", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ],
   "shortcuts": [
-    { "name": "Quét QR trả tiền", "short_name": "Quét QR", "url": "/?action=scan" },
-    { "name": "Chuyển / Rút tiền", "short_name": "Chuyển/Rút", "url": "/?action=transfer" },
-    { "name": "Chia tiền nhóm", "short_name": "Chia tiền", "url": "/?action=split" }
+    {
+      "name": "Quét QR trả tiền",
+      "short_name": "Quét QR",
+      "url": "/?action=scan",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Chuyển / Rút tiền",
+      "short_name": "Chuyển/Rút",
+      "url": "/?action=transfer",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Chia tiền nhóm",
+      "short_name": "Chia tiền",
+      "url": "/?action=split",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
   ]
 }

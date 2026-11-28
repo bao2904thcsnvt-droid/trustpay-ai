@@ -1,6 +1,7 @@
 import { buildEmvPayload, tlv } from "@/lib/qr/emvco";
 import { NAPAS_GUID } from "@/lib/qr/vietqr-inspector";
 import { findInstitution, type PayeeInstitution, type PayeeInstitutionCode } from "@/lib/payments/banks";
+import { NAPAS_ACCOUNT_NAME_MAX, normalizeNapasAccountName } from "@/lib/vietnam-banks";
 
 /**
  * Dựng mã VietQR chuẩn EMVCo (NAPAS 247) để chuyển tiền THẬT qua app Ngân hàng /
@@ -33,7 +34,7 @@ export interface VietQrTransferInput {
 }
 
 export const VIETQR_MEMO_MAX = 25;
-export const VIETQR_NAME_MAX = 50;
+export const VIETQR_NAME_MAX = NAPAS_ACCOUNT_NAME_MAX;
 export const VIETQR_IMAGE_TEMPLATE = "compact2";
 export const VIETQR_DEEPLINK_BASE = "https://dl.vietqr.io/pay";
 export const VIETQR_IMAGE_BASE = "https://img.vietqr.io/image";
@@ -57,15 +58,9 @@ export function sanitizeMemo(raw: string, max = VIETQR_MEMO_MAX): string {
     .trim();
 }
 
-/** Tên chủ tài khoản: in hoa, không dấu, ≤ 50 ký tự. */
+/** Tên chủ tài khoản: in hoa, không dấu, ≤ 50 ký tự — ủy quyền chuẩn liên ngân hàng `normalizeNapasAccountName`. */
 export function sanitizeAccountName(raw: string, max = VIETQR_NAME_MAX): string {
-  return removeDiacritics(raw)
-    .toUpperCase()
-    .replace(/[^A-Z0-9 ]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, max)
-    .trim();
+  return normalizeNapasAccountName(raw, max);
 }
 
 /** Chuẩn hóa STK người dùng nhập (bỏ khoảng trắng, dấu chấm, gạch nối; in hoa). */

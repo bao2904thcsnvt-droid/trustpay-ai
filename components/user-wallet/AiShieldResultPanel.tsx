@@ -69,6 +69,8 @@ export interface AiShieldResultPanelProps {
   guardianName?: string;
   /** Chế độ Tiền thật Non-Custodial: không chặn giao dịch theo số dư ví ảo 0đ. */
   nonCustodial?: boolean;
+  /** Chế độ Tiền thật: cuộn thẳng tới khung VietQR + Mở App Ngân hàng (thay vì xác nhận ví ảo). */
+  onOpenRealHandoff?: () => void;
 }
 
 function getRiskTheme(level: RiskLevel) {
@@ -127,6 +129,7 @@ export default function AiShieldResultPanel({
   reportReady = false,
   guardianName = "",
   nonCustodial = true,
+  onOpenRealHandoff,
 }: AiShieldResultPanelProps) {
   const { t, money, category: categoryLabel, data } = useI18n();
 
@@ -522,6 +525,20 @@ export default function AiShieldResultPanel({
                 >
                   <ScanFace className="h-4 w-4 shrink-0" />
                   <span>{t.result.biometricPolicy}</span>
+                </button>
+              ) : nonCustodial && onOpenRealHandoff ? (
+                <button
+                  type="button"
+                  disabled={isInvalidAmount}
+                  onClick={onOpenRealHandoff}
+                  className={`inline-flex min-h-[52px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold text-white shadow-md transition-all hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 sm:w-auto sm:flex-initial ${
+                    liveExceeded
+                      ? "bg-gradient-to-r from-amber-500 to-orange-600 shadow-amber-500/25"
+                      : "bg-gradient-to-r from-[#a50064] to-[#d82d8b] shadow-[#a50064]/25"
+                  }`}
+                >
+                  <span>Chuyển tiền thật qua App Ngân hàng / VietQR ({money(parsedAmount)})</span>
+                  <ArrowRight className="h-4 w-4 shrink-0" />
                 </button>
               ) : (
                 <button

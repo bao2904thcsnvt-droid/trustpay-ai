@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import type { TransactionAnalysisResponse } from "@/types/trustpay";
 import { findInstitution, PAYER_BANK_APPS, type PayeeInstitutionCode } from "@/lib/payments/banks";
+import { buildBankTransferDeepLink } from "@/lib/payments/bank-deeplinks";
 import {
   buildBankDeeplink,
   buildPayeeVietQr,
@@ -340,7 +341,15 @@ export default function RealPaymentHandoff({
   }
 
   const payerInstitution = findInstitution(payerApp) ?? PAYER_BANK_APPS[0];
-  const deeplink = buildBankDeeplink(payerInstitution.slug);
+  const deeplink =
+    buildBankTransferDeepLink({
+      appId: payerInstitution.slug,
+      bankBin: institution.bin,
+      accountNumber: payee.accountNumber,
+      amount: qrAmount,
+      memo: debouncedMemo,
+      accountName,
+    }) ?? buildBankDeeplink(payerInstitution.slug);
   const copyLines = [
     `${t.handoff.copyLines.bank}: ${institution.shortName} (${institution.bin})`,
     `${t.handoff.copyLines.account}: ${payee.accountNumber}`,

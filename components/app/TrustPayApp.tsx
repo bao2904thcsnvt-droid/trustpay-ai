@@ -690,7 +690,28 @@ export default function TrustPayApp() {
     }
 
     const sessionId = createClientId("SES");
-    const payee = meta.payee ?? null;
+    let payee = meta.payee ?? null;
+    if (!payee && meta.commandText.trim()) {
+      const parsedFromText = parsePaymentMessage(meta.commandText);
+      if (parsedFromText.institutionCode && parsedFromText.accountNumber) {
+        payee = {
+          institutionCode: parsedFromText.institutionCode,
+          accountNumber: parsedFromText.accountNumber,
+          accountName: parsedFromText.accountName || "",
+        };
+        setPayeeDraft({
+          institutionCode: payee.institutionCode,
+          accountNumber: payee.accountNumber,
+          accountName: payee.accountName,
+        });
+      } else if (parsedFromText.accountNumber && !payeeDraft.accountNumber) {
+        setPayeeDraft((prev) => ({
+          ...prev,
+          accountNumber: parsedFromText.accountNumber ?? prev.accountNumber,
+          accountName: parsedFromText.accountName || prev.accountName,
+        }));
+      }
+    }
     setTransfer({
       id: sessionId,
       analysis: result,
@@ -2227,7 +2248,6 @@ export default function TrustPayApp() {
     ) : null;
 
   const resultPanel = (
-    <>
     <AiShieldResultPanel
       analysis={transfer?.analysis ?? null}
       walletBalance={wallet.balance}
@@ -2249,9 +2269,19 @@ export default function TrustPayApp() {
       reportReady={Boolean(transfer?.reportText)}
       guardianName={wallet.guardian.name}
       nonCustodial={nonCustodial}
+      onOpenRealHandoff={() => {
+        if (transfer?.payee) {
+          focusArea("tp-real-handoff");
+        } else {
+          focusArea("tp-payee-fields");
+          showToast({
+            type: "info",
+            title: "Chọn ngân hàng người nhận để chuyển tiền thật",
+            description: "Chọn tên ngân hàng & STK người nhận (rồi bấm quét lại) để mở App Ngân hàng điền sẵn lệnh chuyển.",
+          });
+        }
+      }}
     />
-    {promaxPanels}
-    </>
   );
 
   const handoffPanel = (
@@ -2297,6 +2327,7 @@ export default function TrustPayApp() {
           }
         />
       )}
+      {promaxPanels}
     </>
   );
 

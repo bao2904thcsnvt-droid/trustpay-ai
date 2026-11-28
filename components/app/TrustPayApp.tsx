@@ -120,7 +120,6 @@ import { buildTransferCommand } from "@/lib/copilot/payment-copilot";
 import {
   createDefaultHubState,
   createRealHubState,
-  deductLinkedAccountReferenceBalance,
   hubStore,
   isTrustedPayeeSaved,
   setBalanceHidden,
@@ -822,13 +821,8 @@ export default function TrustPayApp() {
 
     walletStore.setState((state) => (isDemo ? applyDebit(state, tx) : recordRealTransfer(state, tx)));
     if (!isDemo) {
-      const hubSnap = hubStore.getSnapshot();
-      const sourceAcc =
-        hubSnap.linkedAccounts.find((acc) => acc.id === hubSnap.defaultSourceId && !acc.demo && acc.accountNumber !== "") ??
-        hubSnap.linkedAccounts.find((acc) => !acc.demo && acc.accountNumber !== "");
-      if (sourceAcc) {
-        deductLinkedAccountReferenceBalance(sourceAcc.id, amount);
-      }
+      // Non-Custodial: KHÔNG BAO GIỜ tự trừ ảo số dư thật của ngân hàng trên trình duyệt;
+      // số dư thật chỉ cập nhật khi SePay / Casso trả về biến động thật từ ngân hàng.
       recordAudit("REAL_TRANSFER", {
         amountBand: amountBand(amount),
         category: session.category,
@@ -1325,13 +1319,6 @@ export default function TrustPayApp() {
     };
     walletStore.setState((state) => (isDemo ? applyDebit(state, tx) : recordRealTransfer(state, tx)));
     if (!isDemo) {
-      const hubSnap = hubStore.getSnapshot();
-      const sourceAcc =
-        hubSnap.linkedAccounts.find((acc) => acc.id === hubSnap.defaultSourceId && !acc.demo && acc.accountNumber !== "") ??
-        hubSnap.linkedAccounts.find((acc) => !acc.demo && acc.accountNumber !== "");
-      if (sourceAcc) {
-        deductLinkedAccountReferenceBalance(sourceAcc.id, check.amount);
-      }
       recordAudit("REAL_TRANSFER", {
         amountBand: amountBand(check.amount),
         category: check.category,

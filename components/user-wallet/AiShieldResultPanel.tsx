@@ -423,7 +423,11 @@ export default function AiShieldResultPanel({
             <CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-600" />
             <div>
               <p className="text-sm font-bold">{t.result.completedTitle(money(parsedAmount))}</p>
-              <p className="text-xs text-emerald-700">{t.result.completedDesc(categoryLabel(category))}</p>
+              <p className="text-xs text-emerald-700">
+                {nonCustodial
+                  ? `Đã ghi nhận vào sổ chi tiêu mục "${categoryLabel(category)}" & Lũy kế TT 50 NHNN (số dư ngân hàng thật chỉ cập nhật theo SePay/Casso).`
+                  : t.result.completedDesc(categoryLabel(category))}
+              </p>
             </div>
           </div>
         ) : transactionStatus === "cancelled" ? (
